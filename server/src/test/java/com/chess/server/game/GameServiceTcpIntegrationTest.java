@@ -1,11 +1,5 @@
 package com.chess.server.game;
 
-import com.chess.common.protocol.Message;
-import com.chess.common.protocol.MessageType;
-import com.chess.common.protocol.ProtocolCodec;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
-
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -25,8 +19,21 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static com.chess.common.protocol.MessageType.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+
+import com.chess.common.protocol.Message;
+import static com.chess.common.protocol.MessageType.ERROR;
+import static com.chess.common.protocol.MessageType.GAME_END;
+import static com.chess.common.protocol.MessageType.GAME_START;
+import static com.chess.common.protocol.MessageType.MOVE_REJECTED;
+import static com.chess.common.protocol.MessageType.OPPONENT_DISCONNECTED;
+import static com.chess.common.protocol.MessageType.PONG;
+import static com.chess.common.protocol.MessageType.STATE;
+import com.chess.common.protocol.ProtocolCodec;
 
 /** Test-only TCP harness. Production accept loop, bounded framing and session lifecycle belong to member 1. */
 @Timeout(20)
@@ -126,7 +133,7 @@ class GameServiceTcpIntegrationTest {
                     }
                 } catch (SocketException ex) {
                     if (!listener.isClosed()) { errors.add(ex); }
-                } catch (Exception ex) {
+                } catch (IOException ex) {
                     errors.add(ex);
                 }
             });
