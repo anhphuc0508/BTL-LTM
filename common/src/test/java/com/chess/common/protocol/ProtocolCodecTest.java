@@ -3,7 +3,6 @@ package com.chess.common.protocol;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import com.fasterxml.jackson.databind.json.JsonMapper;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -11,68 +10,59 @@ class ProtocolCodecTest {
     private final ProtocolCodec codec = new ProtocolCodec();
 
     @Test
-    void roundTripsUnicodeAndProducesExactlyOneTerminator() {
-        Message input = new Message(MessageType.CREATE_ROOM, "req-1", null,
-                codec.newPayload().put("playerName", "Phúc \"Chess\""));
-        String line = codec.encode(input);
-        assertTrue(line.endsWith("\n"));
-        assertEquals(1, line.chars().filter(c -> c == '\n').count());
-        assertEquals(input, codec.decode(line.substring(0, line.length() - 1)));
+    void parsesPlainMoveWithoutJson() {
+        Message move = codec.decode("MOVE|ABC234|e2e4");
+        assertEquals(MessageType.MOVE, move.getType());
+        assertArrayEquals(new String[]{"ABC234", "e2e4"}, move.getFields());
+        assertEquals("MOVE|ABC234|e2e4", codec.encode(move));
     }
 
     @Test
-    void permitsOmittedOptionalFields() {
-        assertEquals(new Message(MessageType.PING, null, null, null), codec.decode("{\"type\":\"PING\"}"));
+    void roundTripsUnicodeSpacesAndEmptyFields() {
+        Message name = codec.decode("CREATE_ROOM|Phúc Chess");
+        assertEquals("Phúc Chess", name.getField(0));
+        assertEquals("CREATE_ROOM|Phúc Chess", codec.encode(name));
+        String line = "STATE|ABC234|WHITE|WAITING|WHITE|0|8/8/8/8/8/8/8/8 w - - 0 1||||";
+        assertEquals(line, codec.encode(codec.decode(line)));
+        assertEquals("", codec.decode(line).getField(9));
+        assertFalse(codec.encode(name).contains("\n"));
+    }
+
+    @Test
+    void pingHasNoArgumentsAndFieldsCannotBeMutatedThroughReferences() {
+        assertEquals(0, codec.decode("PING").getFieldCount());
+        String[] fields = {"ABC234", "e2e4"};
+        Message move = new Message(MessageType.MOVE, fields);
+        fields[1] = "e2e5";
+        move.getFields()[1] = "e2e6";
+        assertEquals("e2e4", move.getField(1));
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"", " ", "null", "[]", "{}", "{", "{\"type\":4}",
-            "{\"type\":\"BOGUS\"}", "{\"type\":\"PING\",\"payload\":[]}",
-            "{\"type\":\"PING\",\"payload\":null}", "{\"type\":\"PING\",\"requestId\":4}",
-            "{\"type\":\"PING\",\"roomId\":\"bad\"}",
-            "{\"type\":\"PING\",\"extra\":true}", "{\"type\":\"PING\",\"type\":\"MOVE\"}",
-            "{\"type\":\"PING\"} {}", "{\n\"type\":\"PING\"}",
-            "{\"type\":\"PING\",\"requestId\":\"bad\\nlog\"}"})
-    void rejectsMalformedOrAmbiguousEnvelopes(String line) {
-        assertEquals("BAD_MESSAGE", assertThrows(ProtocolException.class, () -> codec.decode(line)).code());
+    @ValueSource(strings = {"", " ", "UNKNOWN", "ping", "|PING", " PING", "PING ", "PING\n", "PING\r", "PING\nMOVE|ABC234|e2e4"})
+    void rejectsMalformedLines(String line) {
+        assertEquals("BAD_MESSAGE", assertThrows(ProtocolException.class, () -> codec.decode(line)).getCode());
     }
 
     @Test
-    void enforcesUtf8ByteLimitAndDepth() {
-        String tooLarge = "{\"type\":\"PING\",\"payload\":{\"x\":\"" + "ờ".repeat(400_000) + "\"}}";
-        assertEquals("MESSAGE_TOO_LARGE", assertThrows(ProtocolException.class, () -> codec.decode(tooLarge)).code());
-        String deep = "{\"type\":\"PING\",\"payload\":{\"x\":" + "[".repeat(33) + "0" + "]".repeat(33) + "}}";
-        assertThrows(ProtocolException.class, () -> codec.decode(deep));
+    void rejectsNullAndEnforcesLimitInUtf8Bytes() {
+        assertEquals("BAD_MESSAGE", assertThrows(ProtocolException.class, () -> codec.decode(null)).getCode());
+        assertEquals("MESSAGE_TOO_LARGE", assertThrows(ProtocolException.class,
+                () -> codec.decode("CREATE_ROOM|" + "ờ".repeat(6_000))).getCode());
+        String boundary = "CREATE_ROOM|" + "a".repeat(ProtocolCodec.MAX_LINE_BYTES - 12);
+        assertEquals(boundary, codec.encode(codec.decode(boundary)));
+        assertThrows(ProtocolException.class, () -> codec.decode(boundary + "a"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"a|b", "a\nb", "a\rb"})
+    void rejectsDelimiterInjectionWhileEncoding(String field) {
+        assertThrows(ProtocolException.class, () -> codec.encode(new Message(MessageType.CREATE_ROOM, field)));
     }
 
     @Test
-    void payloadCannotBeChangedThroughCallerReferences() {
-        var original = codec.newPayload().put("move", "e2e4");
-        Message message = new Message(MessageType.MOVE, "r1", "ABC234", original);
-        original.put("move", "e2e5");
-        message.payload().put("move", "e2e6");
-        assertEquals("e2e4", message.payload().path("move").asText());
-    }
-
-    @Test
-    void classAndGettersPreserveOriginalJsonContract() throws Exception {
-        Message message = new Message(MessageType.MOVE, "m1", "ABC234",
-                codec.newPayload().put("move", "e2e4"));
-        String expected = "{\"type\":\"MOVE\",\"requestId\":\"m1\",\"roomId\":\"ABC234\",\"payload\":{\"move\":\"e2e4\"}}\n";
-        assertEquals(expected, codec.encode(message));
-
-        // New getters and the old accessors can coexist in the two team members' code.
-        Message received = codec.decode(expected.stripTrailing());
-        assertEquals(message.type(), received.getType());
-        assertEquals(message.requestId(), received.getRequestId());
-        assertEquals(message.roomId(), received.getRoomId());
-        assertEquals(message.payload(), received.getPayload());
-        received.getPayload().put("move", "forged");
-        assertEquals("e2e4", received.payload().path("move").asText());
-
-        // Plain Jackson callers can still deserialize the envelope as with the original record.
-        assertEquals(message, new JsonMapper().readValue(expected, Message.class));
-        assertEquals("{\"type\":\"PING\",\"payload\":{}}\n",
-                codec.encode(new Message(MessageType.PING, null, null, null)));
+    void rejectsNullFieldWhileEncoding() {
+        assertThrows(ProtocolException.class,
+                () -> codec.encode(new Message(MessageType.CREATE_ROOM, new String[]{null})));
     }
 }

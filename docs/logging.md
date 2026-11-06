@@ -1,57 +1,53 @@
-# Logging và lịch sử nước đi
+# Logging và lịch sử
 
-## Hai nguồn dữ liệu
-
-| Nguồn | Mục đích | Nơi lưu |
+| Nguồn | Nơi lưu | Mục đích |
 | --- | --- | --- |
-| Technical/system log | Theo dõi nghiệp vụ, mạng, lỗi | Console và `logs/server.log` |
-| Match archive | Bản ghi event của từng ván phục vụ demo/debug | `logs/matches/<matchId>.jsonl` |
-| In-memory move history | Trạng thái nghiệp vụ để gửi cho Client | `GameRoom.history`, chỉ chứa nước hợp lệ |
+| Technical log | Console, logs/server.log | Theo dõi hoạt động/lỗi |
+| Nhật ký từng ván | `logs/matches/<matchId>.log` | Event dạng chuỗi, mỗi dòng một event |
+| Lịch sử trong bộ nhớ | GameRoom.history | Gửi lịch sử cho Client bằng GET_STATE |
 
-Client nhận history từ snapshot Server; không đọc/parse `server.log` hoặc file archive để hiển thị.
-History trong bộ nhớ và archive hiện không được nạp lại sau khi Server restart.
+Nhật ký mới là chuỗi thuần túy; các file .jsonl cũ nếu có không bị sửa/xóa.
+Lịch sử và trạng thái không tự nạp lại sau khi Server restart.
 
-## Event phần 3 đã triển khai
+## Các sự kiện
 
-| Event | Level | Technical log | Match archive |
-| --- | --- | --- | --- |
-| `ROOM_CREATED` | INFO | Có | Có |
-| `GAME_START` | INFO | Có | Có |
-| `MOVE_ACCEPTED` | INFO | Có, UCI/ply/context | Có, thêm color/UCI/time/FEN |
-| `MOVE_REJECTED` | WARN | Có, requestId/sessionId/mã lý do | Không thêm vào lịch sử hợp lệ |
-| `GAME_END` | INFO | Có, result/reason | Có |
-| `MATCH_LOG_WRITE_FAILED` | ERROR | Có, kèm exception | Không ghi được event do lỗi ổ đĩa |
+- ROOM_CREATED, GAME_START, MOVE_ACCEPTED, GAME_END: INFO và ghi nhật ký từng ván.
+- MOVE_REJECTED: WARN trong technical log, không thêm vào lịch sử/nhật ký nước hợp lệ.
+- MATCH_LOG_WRITE_FAILED: ERROR kèm exception; nước hợp lệ vẫn được giữ và trả STATE.
 
-Context: `roomId`, `matchId`, `requestId` khi có, `ply`; event từ chối thêm `sessionId` đã được kiểm tra.
-Không ghi tên hiển thị, raw JSON không kiểm soát, token hoặc payload Client vào technical log. Chuỗi UCI trong log chỉ là nước đã hợp lệ.
-Exception khi ghi archive được logger ghi kèm stack trace, không đưa về Client.
+Mỗi dòng nhật ký có cùng thứ tự:
 
-Một lỗi ghi archive không thay đổi kết quả nước đã chấp nhận: vẫn giữ history trong bộ nhớ, trả `STATE` cho hai bên, ghi ERROR để vận hành biết.
-Archive là bản ghi best-effort; không cam kết giao dịch hoặc durability khi mất điện.
+```text
+event|roomId|matchId|at|version|ply|color|uci|fen|result|reason
+```
 
-## Cấu hình nền dùng chung
+color/uci chỉ có ở MOVE_ACCEPTED. result/reason chỉ có khi đã kết thúc.
+Ô không có giá trị để rỗng, tách bằng split("\\|", -1).
+at là UTC; ply là số nước đã chấp nhận; FEN là bàn cờ sau event.
 
-`server/src/main/resources/logback.xml` cung cấp cấu hình tối thiểu để game log hoạt động:
+Technical log ghi mã phòng, matchId, ply, nước hợp lệ, kết quả và lý do.
+Từ chối nước đi ghi sessionId và mã lý do; mã phòng chỉ được ghi nếu đúng định dạng.
+Không ghi tên người chơi hoặc toàn bộ input chưa kiểm tra vào technical log.
 
-- SLF4J + Logback, mức gốc INFO.
-- Timestamp ISO 8601 có offset, level, thread, logger, message, stack trace.
-- Console và `logs/server.log`.
-- Rolling theo ngày và kích thước 10 MB, giữ tối đa 7 ngày và tổng archive technical log 100 MB.
-- Đổi thư mục technical log qua biến môi trường hoặc system property `CHESS_LOG_DIR`.
+## Cấu hình
 
-Đường dẫn match archive được truyền riêng vào `new MatchEventWriter(path)`; constructor mặc định của `GameService` dùng `logs/matches/`.
-Đổi `CHESS_LOG_DIR` không tự đổi đường dẫn match archive. Muốn đồng bộ hai đường dẫn, người 1 truyền `MatchEventWriter` đúng thư mục khi khởi tạo service.
-Có thể tắt archive bằng `MatchEventWriter.disabled()`; technical log và history vẫn hoạt động.
-Mỗi event archive mở/đóng file ngay; truy cập cùng ván được khóa bởi `GameRoom`.
-Tên file dùng UUID `matchId`, không dùng mã phòng có thể tái sử dụng; chỉ cho phép UUID hợp lệ để tránh đường dẫn từ input.
-Match archive chưa có chính sách tự xóa; người vận hành quyết định thời gian lưu cho demo.
+SLF4J + Logback, mức INFO, có timestamp/level/thread/logger/message/stack trace.
+Console và file logs/server.log, rolling theo ngày và 10 MB,
+giữ tối đa 7 ngày, tổng technical archive tối đa 100 MB.
+Đổi thư mục technical log bằng CHESS_LOG_DIR.
 
-Người 1 bổ sung event kết nối/timeout/I/O, shutdown và Docker logs. Người 2 cấu hình Client logging theo PID và hiển thị lịch sử trên Swing.
-Thư mục `logs/`, `target/` và bộ công cụ cục bộ `.tools/` đã được `.gitignore` bỏ qua.
+GameService mặc định dùng logs/matches cho nhật ký ván.
+Có thể truyền new MatchEventWriter(path) riêng hoặc MatchEventWriter.disabled().
+CHESS_LOG_DIR không tự đổi đường dẫn này.
+Tên file dùng UUID do Server tạo; không nhận đường dẫn Client.
 
-## Kiểm chứng
+Mỗi event mở/đóng file ngay dưới khóa phòng.
+Nhật ký là best-effort: lỗi ghi được log, không đảo ngược nước đi đã chấp nhận.
+Chưa có chính sách tự xóa nhật ký ván hoặc phục hồi trạng thái từ file.
+logs/, target/ và .tools/ đã được Git bỏ qua.
 
-`GameEventLogger` nhận event từ `GameService`, giữ tên logger `GameService` như API ban đầu;
-`MatchEventWriter` chịu trách nhiệm ghi archive. Việc tách lớp giúp đọc luồng xử lý trận đấu dễ hơn.
+Người 1 bổ sung log kết nối/timeout/shutdown và Docker;
+người 2 bổ sung log Client/Swing.
 
-`GameLoggingTest` kiểm tra cấu hình Logback thật, file archive, đúng một lần ghi nước hợp lệ, nước bị từ chối tạo WARN nhưng không thêm history, lỗi ổ đĩa không làm nước đi bị trả sai, và phân tách file theo matchId.
+GameLoggingTest kiểm tra Logback thật, nội dung file chuỗi, từ chối không thêm history,
+lỗi ổ đĩa không làm sai kết quả nước đi, tách file theo UUID và từ chối đường dẫn sai.

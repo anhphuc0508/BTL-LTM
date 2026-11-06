@@ -1,98 +1,111 @@
-# Kiến trúc và ghép code phần 3
+# Ghép phần 3 vào Server và Client
 
 ## Luồng xử lý
 
-```mermaid
-flowchart LR
-    UI["Swing / ChessClient — người 2"] <-->|"TCP UTF-8 JSON Lines"| Transport["ClientHandler / ConnectionManager — người 1"]
-    Transport --> Codec["ProtocolCodec — common"]
-    Codec --> Service["GameService — người 3"]
-    Service --> Rooms["RoomManager / GameRoom"]
-    Rooms --> Engine["ChessRulesAdapter / Chesslib"]
-    Service --> Archive["MoveRecord / MatchEventWriter"]
-    Service -->|"List of OutboundMessage"| Transport
+```text
+Client gửi "MOVE|ABC234|e2e4"
+    → người 1 đọc một dòng từ socket
+    → GameService.handle(sessionId, line)
+    → kiểm tra phòng, lượt, luật cờ; lưu nước hợp lệ
+    → trả danh sách OutboundMessage chứa chuỗi
+    → người 1 gửi từng chuỗi cho đúng kết nối
 ```
 
-`common` chỉ chứa envelope/codec và phụ thuộc Jackson. `server` phụ thuộc `common`, Chesslib, SLF4J/Logback.
-`client` phụ thuộc `common`; engine luật cờ chỉ tồn tại phía Server.
-Server quyết định màu, quyền đi, lượt và kết quả. Client gửi yêu cầu và chờ snapshot.
+`common` chứa Message, MessageType và ProtocolCodec dùng chuỗi Java; không cần thư viện runtime.
+`server` dùng common, Chesslib và SLF4J/Logback. `client` phụ thuộc common.
 
 ## Điểm nối cho người 1
 
-Khởi tạo **một** `GameService` dùng chung cho toàn bộ kết nối của một Server:
+Khởi tạo **một GameService dùng chung** cho toàn bộ kết nối:
 
 ```java
-GameService gameService = new GameService();
-ProtocolCodec codec = new ProtocolCodec();
+GameService game = new GameService();
 ```
 
-Với một dòng đã được bộ đọc có giới hạn lấy từ socket:
+Sau khi đọc được một dòng UTF-8 không có ký tự kết thúc dòng:
 
 ```java
-Message request = codec.decode(line);
-List<OutboundMessage> responses = gameService.handle(sessionId, request);
+List<OutboundMessage> replies = game.handle(sessionId, line);
+for (OutboundMessage reply : replies) {
+    String recipient = reply.getRecipientSessionId();
+    String text = reply.getMessage();
+    // Tìm writer của recipient, println(text) rồi flush().
+}
 ```
 
-Mỗi `OutboundMessage` có getter `getRecipientSessionId()` và `getMessage()`.
-Các hàm cũ `recipientSessionId()` và `message()` vẫn được giữ để tương thích.
-`ConnectionManager` tìm kết nối theo session, rồi ghi `codec.encode(message)` bằng UTF-8 và flush.
-`encode` đã có LF. Không ghi riêng từng byte từ nhiều thread hoặc dùng `println` làm thêm dòng trắng.
+Không cần tạo Message hoặc gọi codec ở tầng transport.
+getMessage() trả String chưa có xuống dòng.
+Khi EOF/timeout/lỗi I/O: dừng luồng đọc rồi gọi `game.onDisconnect(sessionId)`,
+gửi các thông báo trả về cho kết nối còn sống. Gọi disconnect lặp không kết thúc ván thêm lần nữa.
 
-`Message` hiện là class thường, dùng getter `getType()`, `getRequestId()`, `getRoomId()`, `getPayload()`.
-Constructor và các hàm cũ `type()`, `requestId()`, `roomId()`, `payload()` vẫn hoạt động.
-`MoveRecord` cũng hỗ trợ cả getter và cách gọi cũ. Tên lệnh, tên field và cấu trúc JSON không đổi.
-
-`GameService` dùng if/else và mỗi lệnh có một hàm `handle...()` riêng.
-`GameRequestReader` đọc/kiểm tra JSON đầu vào; `GameResponseBuilder` tạo JSON đầu ra;
-`GameEventLogger` ghi game event. [Hướng dẫn đọc code](reading-guide.md).
-
-Khi EOF/timeout/lỗi I/O, dừng đọc session đó và gọi:
-
-```java
-List<OutboundMessage> notifications = gameService.onDisconnect(sessionId);
-```
-
-Gửi các thông báo cho session còn sống. Hàm disconnect gọi lặp lại được; một lần rớt kết nối chỉ kết thúc ván một lần.
-Người 1 quản lý `SessionContext`/raw socket; phần 3 chỉ nhận `String sessionId` (1–128 ký tự `[A-Za-z0-9._:-]`) do Server gán, khác nhau giữa các kết nối.
-Không tái sử dụng session ID và không đọc session ID từ JSON Client.
-
-## Đồng thời và thứ tự
-
-- Mỗi `GameRoom` có khóa riêng. Kiểm tra lượt, apply engine, thêm history, tạo snapshot và ghi event diễn ra dưới cùng khóa.
-- Tạo/vào/rời phòng lấy khóa `rooms` rồi khóa `room`, giữ đến khi chuẩn bị xong trạng thái và phản hồi.
-- Với MOVE/RESIGN/GET_STATE, `getRoom()` chỉ lấy khóa quản lý để tìm phòng, nhả khóa rồi mới khóa phòng để xử lý. Các nước đi ở phòng khác nhau dùng khóa phòng riêng.
-- Bên trong khóa phòng, `requireMember()` chỉ đọc ConcurrentHashMap. Không lấy khóa quản lý sau khi đã lấy khóa phòng; điều này tránh hai luồng chờ khóa ngược nhau. JOIN/DISCONNECT đã giữ khóa quản lý từ bên ngoài.
-- Mỗi session có một luồng đọc theo thứ tự. Cleanup chỉ chạy sau khi luồng đọc session đó đã dừng.
-- Không gọi I/O socket trong khóa phòng. Kết quả trả về là danh sách thông điệp với payload đã sao chép.
-- Người 1 cần hàng đợi gửi/khóa writer theo kết nối và cơ chế giữ thứ tự event trong phòng khi nhiều thread dispatch. `version` giúp Client bỏ snapshot cũ; khóa nghiệp vụ không tự bảo đảm thứ tự ghi TCP sau khi hàm đã trả về.
-- Không dùng một `GameService` riêng cho mỗi Client vì như vậy hai Client sẽ không chia sẻ danh sách phòng.
-
-## Vòng đời phòng
-
-```mermaid
-stateDiagram-v2
-    [*] --> WAITING: CREATE_ROOM / White
-    WAITING --> IN_PROGRESS: JOIN_ROOM / Black
-    WAITING --> [*]: creator disconnects
-    IN_PROGRESS --> FINISHED: checkmate / draw / resign / disconnect
-    FINISHED --> [*]: both sessions detach
-```
-
-Chỉ hai người mỗi phòng; không spectator. Phòng kết thúc vẫn đọc được bằng `GET_STATE` cho thành viên còn gắn với phòng.
-Tạo/vào phòng mới sau khi kết thúc sẽ gỡ membership cũ; phòng không còn thành viên sẽ bị xóa. `matchId` UUID giữ archive độc lập với mã phòng.
-Không có database, khôi phục trạng thái sau Server restart hay reconnect/resume trong phiên bản này.
+sessionId do Server gán duy nhất cho mỗi kết nối, gồm 1–128 ký tự [A-Za-z0-9._:-].
+Không lấy session từ nội dung Client gửi.
+Người 1 phụ trách accept loop, bounded reader, timeout, quản lý writer và đóng socket.
+Giới hạn dòng theo ProtocolCodec.MAX_LINE_BYTES trước khi tạo String quá lớn.
 
 ## Điểm nối cho người 2
 
-1. Gửi `CREATE_ROOM`/`JOIN_ROOM`, giữ `roomId` và `matchId` Server trả về.
-2. Lấy màu từ `yourColor`; render bàn cờ từ `fen`.
-3. Click tạo UCI `MOVE`; chỉ xác nhận khi nhận `STATE` mới.
-4. Hiển thị lịch sử theo `uci`, ghép theo `(matchId, ply)`, có thể lấy đủ lịch sử bằng `GET_STATE` phân trang.
-5. Xử lý `MOVE_REJECTED`, `OPPONENT_DISCONNECTED`, `GAME_END`; không tự suy ra lượt/kết quả.
-6. Cập nhật UI bằng `SwingUtilities.invokeLater`; TCP I/O chạy ở thread nền.
+Gửi chuỗi theo [protocol.md](protocol.md), chẳng hạn:
 
-## Kiểm thử tích hợp hiện tại
+```java
+writer.println("MOVE|" + roomId + "|e2e4");
+writer.flush();
+```
 
-`GameServiceTcpIntegrationTest` có **TCP harness chỉ dành cho test**, dùng socket loopback và hai client giả lập để kiểm tra codec/service/routing/EOF.
-Harness này không thay thế production Server, không có giới hạn framing/timeout/shutdown đầy đủ của phần 1.
-Demo Swing, hai máy LAN, Docker và tải nhiều kết nối phải làm sau khi ghép phần 1 và 2.
+Nhận một dòng rồi tách:
+
+```java
+String[] parts = line.split("\\|", -1);
+String command = parts[0];
+```
+
+Với STATE/GAME_START, parts[2] là màu của mình, parts[6] là FEN.
+Bảng đầy đủ nằm trong protocol.md. Có thể dùng ProtocolCodec.decode(line)
+để lấy Message; getField(0) là ô đầu tiên **sau** tên lệnh.
+
+Client chỉ gửi yêu cầu; Server quyết định lượt, nước hợp lệ và kết quả.
+STATE có ply/lastMove để cập nhật lịch sử, GET_STATE trả lịch sử phân trang khi cần đồng bộ.
+TCP chạy ở luồng nền; cập nhật Swing bằng SwingUtilities.invokeLater.
+
+## Các lớp phần 3
+
+| Lớp | Công việc |
+| --- | --- |
+| ProtocolCodec / Message | Tách và giữ các ô chuỗi |
+| GameService | Chọn lệnh, xử lý trận đấu |
+| GameRequestReader | Kiểm tra số ô, tên, mã phòng, nước đi |
+| GameResponseBuilder | Ghép chuỗi phản hồi |
+| RoomManager / GameRoom | Quản lý phòng, thành viên, bàn cờ |
+| ChessRulesAdapter | Gọi Chesslib kiểm tra luật |
+| MoveRecord | Lưu một nước hợp lệ |
+| GameEventLogger / MatchEventWriter | Ghi log kỹ thuật và nhật ký từng ván |
+| OutboundMessage | Giữ session nhận và chuỗi cần gửi |
+
+## Đồng thời và vòng đời phòng
+
+Mỗi phòng có khóa riêng: kiểm tra lượt, sửa bàn cờ, thêm lịch sử, tạo phản hồi và ghi log
+đều trong cùng khóa. Hai phòng chơi độc lập.
+
+Tạo/vào/rời phòng lấy khóa RoomManager rồi khóa GameRoom.
+MOVE/RESIGN/GET_STATE chỉ giữ khóa quản lý trong lúc tìm phòng, nhả khóa rồi khóa phòng.
+requireMember đọc ConcurrentHashMap và không lấy ngược khóa quản lý khi đang giữ khóa phòng.
+
+Không ghi socket bên trong khóa phòng. Danh sách phản hồi và các chuỗi đã tạo không thay đổi.
+Tầng gửi của người 1 cần giữ thứ tự sự kiện; khóa nghiệp vụ không tự giữ thứ tự ghi TCP
+giữa các luồng sau khi handle() trả về. version giúp Client nhận biết snapshot cũ.
+
+Phòng đi qua WAITING → IN_PROGRESS → FINISHED. Tối đa hai người, không spectator.
+Rớt kết nối lúc chờ thì xóa phòng. Rớt kết nối khi đang chơi thì đối thủ thắng.
+Sau khi kết thúc có thể tạo/vào ván mới; phòng không còn thành viên sẽ được xóa.
+matchId UUID phân biệt các ván ngay cả khi mã phòng được dùng lại.
+
+## Trạng thái tích hợp
+
+Đã có TCP harness trong test để kiểm tra hai socket gửi/nhận chuỗi, sai lượt và EOF.
+Harness chỉ phục vụ test, không thay thế production Server.
+Bootstrap/transport, Swing và Docker còn là khung của người 1 và 2.
+Chưa có demo LAN, khôi phục sau restart, tài khoản, database hoặc reconnect/resume.
+
+Phiên bản 2 thay giao thức JSON và API Message cũ:
+handle() nhận String, OutboundMessage.getMessage() trả String.
+Code tích hợp trước đây cần cập nhật theo ví dụ trên.

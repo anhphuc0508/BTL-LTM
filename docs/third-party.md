@@ -5,7 +5,6 @@ Dependency được khai báo trong Maven; không chép source/jar thư viện v
 | Thành phần | Phiên bản cố định | Mục đích | Nguồn / giấy phép |
 | --- | --- | --- | --- |
 | Chesslib | 1.3.7 | Sinh nước đi hợp lệ, FEN, chiếu hết/hòa | [Release chính thức](https://github.com/bhlangonijr/chesslib/releases/tag/1.3.7), [Apache 2.0](https://github.com/bhlangonijr/chesslib/blob/1.3.7/LICENSE) |
-| Jackson 2 | 2.22.4 (BOM) | JSON tree/codec dùng chung | [FasterXML](https://github.com/FasterXML/jackson-databind), Apache 2.0 |
 | SLF4J | 2.0.20 | API logging | [SLF4J license](https://www.slf4j.org/license.html), MIT |
 | Logback | 1.5.38 | Console, rolling technical log | [Logback license](https://logback.qos.ch/license.html), EPL 1.0 hoặc LGPL 2.1 |
 | JUnit Jupiter | 5.14.4 | Unit/integration tests | [JUnit 5](https://github.com/junit-team/junit5), EPL 2.0 |

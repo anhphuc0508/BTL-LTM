@@ -1,6 +1,6 @@
 package com.chess.common.protocol;
 
-/** Safe error code for a malformed envelope; never includes the raw client input. */
+/** Mã lỗi khi dòng chuỗi không hợp lệ; không chứa dữ liệu thô của Client. */
 public final class ProtocolException extends IllegalArgumentException {
     private final String code;
 

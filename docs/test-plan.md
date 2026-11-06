@@ -1,62 +1,57 @@
-# Kiểm thử phần 3
+# Kiểm thử phần 3 — giao thức chuỗi
 
-## Chạy kiểm thử
+## Chạy
 
-Windows, JDK 17 trở lên:
+Cần JDK 17 trở lên:
 
 ```powershell
-.\mvnw.cmd verify
+.\mvnw.cmd clean verify
 ```
 
-Linux/macOS: `./mvnw verify`.
+Linux/macOS: `./mvnw clean verify`.
 Chỉ phần 3: `.\mvnw.cmd -pl 'common,server' -am test`.
-Kết quả XML/text được Surefire sinh vào `common/target/surefire-reports/` và `server/target/surefire-reports/`.
-Không commit dependency cache, file log hoặc build output.
 
-## Kết quả đã chạy ngày 06/11/2026
+Surefire ghi báo cáo vào common/target/surefire-reports và server/target/surefire-reports.
+Cache, log và build output không đưa vào Git.
 
-Môi trường: Windows x64, Temurin **17.0.20.1**, Maven Wrapper 3.3.4 / Maven **3.9.16**, compiler release **17**.
-Lệnh `mvnw.cmd verify` hoàn thành **BUILD SUCCESS**; cả `common`, `server`, `client` đều được đóng gói JAR.
+## Kết quả 06/11/2026
+
+Windows x64, Temurin 17.0.20.1, Maven Wrapper 3.3.4 / Maven 3.9.16, compiler release 17.
+Lệnh clean verify báo BUILD SUCCESS, đóng gói JAR cả ba module.
 
 | Test class | Số test | Failures | Errors | Skipped |
 | --- | ---: | ---: | ---: | ---: |
-| `ProtocolCodecTest` | 22 | 0 | 0 | 0 |
-| `ChessRulesAdapterTest` | 21 | 0 | 0 | 0 |
-| `GameServiceTest` | 23 | 0 | 0 | 0 |
-| `GameLoggingTest` | 5 | 0 | 0 | 0 |
-| `GameServiceTcpIntegrationTest` | 2 | 0 | 0 | 0 |
-| **Tổng** | **73** | **0** | **0** | **0** |
+| ProtocolCodecTest | 18 | 0 | 0 | 0 |
+| ChessRulesAdapterTest | 21 | 0 | 0 | 0 |
+| GameServiceTest | 28 | 0 | 0 | 0 |
+| GameLoggingTest | 5 | 0 | 0 | 0 |
+| GameServiceTcpIntegrationTest | 2 | 0 | 0 | 0 |
+| **Tổng** | **74** | **0** | **0** | **0** |
 
-Số lượng có tính từng input của parameterized test. `client` hiện chưa có test vì giao diện/kết nối chưa triển khai.
-Sau khi viết lại bằng class/getter/if-else, toàn bộ 70 test trước vẫn qua; bổ sung 3 test kiểm tra JSON/API tương thích, khóa độc lập giữa hai phòng và tranh chấp cùng vào phòng.
+Số test tính cả từng input trong parameterized test.
+Client chưa có test vì giao diện/kết nối vẫn là bộ khung.
 
-## Bộ test tự động
+## Phạm vi đã kiểm tra
 
-| Test class | Phạm vi |
+| Nhóm | Trường hợp |
 | --- | --- |
-| `ProtocolCodecTest` | JSON Lines, Unicode, round-trip, LF, payload bất biến, duplicate key, field/type sai, trailing JSON, giới hạn byte/depth; class/getter vẫn tạo đúng JSON và hỗ trợ cách gọi cũ |
-| `ChessRulesAdapterTest` | Nước hợp lệ/sai hình học, đổi lượt, nhập thành hai bên, cấm nhập thành qua chiếu, phong cấp cả hai màu/4 loại quân, en passant và hết hiệu lực, quân bị ghim, chiếu hết, các kiểu hòa |
-| `GameServiceTest` | Create/join, màu quân, self-join/full room, session chỉ có một phòng, lượt/quyền/nước sai, chống giả color/FEN, history/timestamp, đầu hàng, chiếu hết/hòa, disconnect/cleanup, hai phòng độc lập, capacity, phân trang history, 32 yêu cầu đồng thời chỉ apply một lần; khóa phòng A không chặn nước đi phòng B; nhiều session cùng JOIN chỉ một người thành Đen |
-| `GameLoggingTest` | Cấu hình Logback thật, event archive, rejection WARN, history không chứa nước sai, lỗi ổ đĩa, UUID file/path traversal |
-| `GameServiceTcpIntegrationTest` | Hai client TCP loopback giả lập, gửi/nhận state, sai lượt, EOF, nhiều JSON Lines trong cùng lần ghi, JSON lỗi không làm mất lệnh tiếp theo |
+| Chuỗi | MOVE trực tiếp, Unicode, FEN có dấu cách, giữ ô rỗng, encode không thêm LF, lệnh lạ/trống/null, chèn delimiter/CR/LF, giới hạn đúng byte UTF-8 |
+| Luật cờ | Nước sai/hợp lệ, lượt, nhập thành/cấm qua chiếu, en passant/hết hiệu lực, phong cấp hai màu/4 loại quân, ghim quân, chiếu hết và các kiểu hòa |
+| Phòng | Gán màu, tự vào phòng mình, phòng đầy, một session một phòng hoạt động, phòng chờ, giới hạn số phòng, cleanup |
+| Nghiệp vụ | Sai lượt, người ngoài phòng, sai luật, thừa ô giả màu/FEN, định dạng nước/mã phòng, đầu hàng, chiếu hết, hòa, disconnect lặp |
+| Đồng thời | 32 MOVE đồng thời chỉ chấp nhận một; phòng A bị khóa không chặn phòng B; nhiều JOIN chỉ một người cầm Đen |
+| Lịch sử | Chính xác một record cho nước hợp lệ, timestamp/FEN đúng; 105 record chia trang 100 + 5; fromPly sai bị từ chối |
+| Logging | Logback thật, nhật ký .log dạng chuỗi, rejection WARN không thêm history, lỗi ổ đĩa không trả sai kết quả, tên file UUID |
+| TCP | Hai socket loopback gửi/nhận chuỗi tiếng Việt, STATE giống bàn cờ, sai lượt, EOF, nhiều dòng trong một lần ghi; lệnh lỗi không làm mất PING tiếp theo |
 
-Fixture phân trang tạo 105 `MoveRecord` trực tiếp trong test để kiểm tra các trang 100 + 5; không coi fixture này là một ván cờ hợp lệ.
-Test TCP có harness riêng trong `src/test/`; production Server/Client vẫn do người 1 và 2 triển khai.
+Fixture lịch sử 105 record được dựng trực tiếp để kiểm tra phân trang,
+không dùng fixture đó làm bằng chứng về một ván cờ hợp lệ.
 
-## Các kiểm thử cần làm khi ghép nhóm
+## Cần kiểm tra sau khi tích hợp
 
-| ID tài liệu | Trạng thái / bằng chứng hiện có | Phần cần ghép |
-| --- | --- | --- |
-| T01 | Hai TCP client giả lập kết nối harness | Hai Swing Client với Server thật |
-| T02–T05 | Nghiệp vụ tạo/vào phòng, `e2e4`, sai lượt/sai luật đã có test | Render và thao tác UI |
-| T06 | EOF thông báo đối thủ, kết thúc ván và giải phóng phòng đã có test | Timeout, ngắt mạng LAN thực tế |
-| T07 | Hai phòng độc lập được kiểm tra ở tầng service | Bốn TCP/Swing Client với production Server |
-| T08 | Codec kiểm tra malformed/oversize/depth; TCP harness kiểm tra JSON lỗi | Bounded reader, giới hạn socket và chống quá tải của người 1 |
-| T09 | Adapter test nhập thành, phong cấp, en passant, king safety | Thao tác và render trong UI |
-| T10 | Service test chiếu hết, hòa lặp ba lần, đầu hàng; adapter test các kiểu hòa khác | Hiển thị kết quả UI |
-| T11 | Chưa kiểm thử Docker | Docker/Compose của người 1 |
-| T12 | Game event/system log của phần 3 có test | Log mạng/Client của người 1 và 2 |
-| T13 | History/ply/phân trang/từ chối không thêm record có test | `MoveHistoryPanel` thật |
-| T14 | Cấu hình rolling technical log được nạp và ghi thử | Stress rotation vượt 10 MB/ngày và Docker logs |
+- Server production: giới hạn đọc dòng trước cấp phát, timeout, thứ tự gửi đa luồng, shutdown.
+- Swing: render FEN, thao tác quân, phong cấp, history, popup kết quả, EDT.
+- Hai máy LAN, bốn client với hai phòng, ngắt mạng thật.
+- Docker/Compose, log mạng/Client, stress rolling log.
 
-Không suy ra rằng demo toàn hệ thống đã hoàn thành từ kết quả unit test hoặc harness.
+TCP harness chỉ ở src/test, không thay thế Server của người 1.

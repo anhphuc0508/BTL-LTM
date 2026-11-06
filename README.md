@@ -3,7 +3,8 @@
 Bộ khung dự án theo mục 4 của tài liệu `Chess_Online_Phan_Cong_Moi_3_Nguoi_Logging.docx`.
 Thư mục repository hiện tại là thư mục gốc dự án (`chess-online/` trong tài liệu).
 
-Nhánh `feature/game-protocol` đã triển khai phần 3: protocol JSON Lines và nghiệp vụ trận đấu.
+Nhánh `feature/game-protocol` đã triển khai phần 3: protocol chuỗi thuần túy và nghiệp vụ trận đấu.
+Ví dụ gửi một dòng `MOVE|ABC234|e2e4`; không dùng JSON/Jackson.
 TCP Server chạy thật, giao diện Swing và Docker còn chờ phần 1 và 2 tích hợp.
 File `.gitkeep` giữ thư mục test trong Git.
 
@@ -40,7 +41,7 @@ Kết quả test ở `common/target/surefire-reports/` và `server/target/surefi
 
 ## Tài liệu bàn giao
 
-- [Đặc tả protocol và ví dụ JSON](docs/protocol.md).
+- [Bảng lệnh chuỗi và ví dụ gửi/nhận](docs/protocol.md).
 - [Kiến trúc và hướng dẫn ghép code](docs/architecture.md).
 - [Logging](docs/logging.md).
 - [Kế hoạch và bằng chứng kiểm thử](docs/test-plan.md).

@@ -1,25 +1,20 @@
 package com.chess.server.game;
 
 import com.chess.common.protocol.Message;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import java.util.Iterator;
-
-/** Đọc dữ liệu JSON đầu vào. GameService nhận lại các giá trị Java đơn giản. */
+/** Đọc các ô chuỗi đã được tách bằng dấu |. */
 final class GameRequestReader {
     String readCreatorName(Message request) {
-        checkFields(request.getPayload(), "playerName");
-        if (request.getRoomId() != null) {
-            throw new GameException("INVALID_PAYLOAD");
-        }
-        return readPlayerName(request);
+        requireFieldCount(request, 1);
+        return readName(request.getField(0));
     }
 
     String readPlayerName(Message request) {
-        ObjectNode payload = request.getPayload();
-        checkFields(payload, "playerName");
-        String rawName = requiredText(payload, "playerName");
+        requireFieldCount(request, 2);
+        return readName(request.getField(1));
+    }
+
+    private String readName(String rawName) {
         String name = rawName.strip();
         if (name.isEmpty() || name.codePointCount(0, name.length()) > 40) {
             throw new GameException("INVALID_PLAYER_NAME");
@@ -33,10 +28,9 @@ final class GameRequestReader {
     }
 
     String readMove(Message request) {
-        ObjectNode payload = request.getPayload();
-        checkFields(payload, "move");
-        String move = requiredText(payload, "move");
-        // Ví dụ e2e4: ô đi + ô đến. Ký tự q/r/b/n cuối là quân được phong cấp, nếu có.
+        requireFieldCount(request, 2);
+        String move = request.getField(1);
+        // e2e4 = ô đi + ô đến; q/r/b/n ở cuối nếu phong cấp.
         if (!move.matches("[a-h][1-8][a-h][1-8][qrbn]?")) {
             throw new GameException("INVALID_MOVE_FORMAT");
         }
@@ -44,59 +38,46 @@ final class GameRequestReader {
     }
 
     String readRoomId(Message request) {
-        String roomId = request.getRoomId();
-        if (roomId == null) {
+        if (request.getFieldCount() == 0 || request.getField(0).isEmpty()) {
             throw new GameException("ROOM_ID_REQUIRED");
+        }
+        String roomId = request.getField(0);
+        if (!roomId.matches("[A-Z0-9]{6}")) {
+            throw new GameException("INVALID_ROOM_ID");
         }
         return roomId;
     }
 
     int readHistoryStart(Message request) {
-        ObjectNode payload = request.getPayload();
-        checkFields(payload, "fromPly");
-        JsonNode value = payload.get("fromPly");
-        if (value == null) {
+        if (request.getFieldCount() == 1) {
             return 1;
         }
-        if (!value.isIntegralNumber() || !value.canConvertToInt() || value.intValue() < 1) {
-            throw new GameException("INVALID_PAYLOAD");
+        requireFieldCount(request, 2);
+        try {
+            String text = request.getField(1);
+            if (!text.matches("[0-9]+")) {
+                throw new NumberFormatException();
+            }
+            int fromPly = Integer.parseInt(text);
+            if (fromPly < 1) {
+                throw new NumberFormatException();
+            }
+            return fromPly;
+        } catch (NumberFormatException ex) {
+            throw new GameException("INVALID_ARGUMENTS");
         }
-        return value.intValue();
     }
 
-    void requireEmptyPayload(Message request) {
-        checkFields(request.getPayload());
+    void requireFieldCount(Message request, int count) {
+        if (request.getFieldCount() != count) {
+            throw new GameException("INVALID_ARGUMENTS");
+        }
     }
 
     void validateSessionId(String sessionId) {
-        // Session do tầng TCP gán; chỉ nhận ký tự an toàn để dùng trong log.
+        // Session do Server gán, không nhận từ chuỗi Client gửi.
         if (sessionId == null || !sessionId.matches("[A-Za-z0-9._:-]{1,128}")) {
             throw new IllegalArgumentException("Invalid server-generated sessionId");
-        }
-    }
-
-    private String requiredText(ObjectNode payload, String field) {
-        JsonNode value = payload.get(field);
-        if (value == null || !value.isTextual()) {
-            throw new GameException("INVALID_PAYLOAD");
-        }
-        return value.textValue();
-    }
-
-    private void checkFields(ObjectNode payload, String... allowedFields) {
-        Iterator<String> fields = payload.fieldNames();
-        while (fields.hasNext()) {
-            String field = fields.next();
-            boolean allowed = false;
-            for (String allowedField : allowedFields) {
-                if (allowedField.equals(field)) {
-                    allowed = true;
-                    break;
-                }
-            }
-            if (!allowed) {
-                throw new GameException("INVALID_PAYLOAD");
-            }
         }
     }
 }

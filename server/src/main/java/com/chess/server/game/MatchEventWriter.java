@@ -1,6 +1,5 @@
 package com.chess.server.game;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -10,7 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
-/** Lưu nhật ký từng ván vào file JSON Lines, tách riêng với technical log và lịch sử trong bộ nhớ. */
+/** Lưu nhật ký chuỗi vào logs/matches/<matchId>.log. */
 public final class MatchEventWriter {
     private static final Logger LOG = LoggerFactory.getLogger(MatchEventWriter.class);
     private final Path directory;
@@ -27,20 +26,23 @@ public final class MatchEventWriter {
         return new MatchEventWriter(null);
     }
 
-    // GameService đã khóa phòng trước khi ghi. Mỗi lần ghi xong sẽ đóng file ngay.
-    public void write(String matchId, ObjectNode event) {
+    // GameService đã khóa phòng trước khi ghi.
+    public void write(String matchId, String event) {
         if (directory == null) {
             return;
         }
         if (matchId == null || !matchId.matches("[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}")) {
             throw new IllegalArgumentException("Invalid server-generated matchId");
         }
+        if (event == null || event.indexOf('\n') >= 0 || event.indexOf('\r') >= 0) {
+            throw new IllegalArgumentException("Event must be one line");
+        }
         try {
             Files.createDirectories(directory);
-            Files.writeString(directory.resolve(matchId + ".jsonl"), event.toString() + "\n",
+            Files.writeString(directory.resolve(matchId + ".log"), event + "\n",
                     StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException | SecurityException ex) {
-            // Lỗi ghi file không được biến một nước đã hợp lệ thành phản hồi từ chối.
+            // Lỗi ghi file không làm một nước hợp lệ bị từ chối.
             LOG.error("event=MATCH_LOG_WRITE_FAILED matchId={}", matchId, ex);
         }
     }

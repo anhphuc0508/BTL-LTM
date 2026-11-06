@@ -2,6 +2,8 @@ package com.chess.server.game;
 
 import com.chess.common.protocol.Message;
 import com.chess.common.protocol.MessageType;
+import com.chess.common.protocol.ProtocolCodec;
+import com.chess.common.protocol.ProtocolException;
 
 import java.nio.file.Path;
 import java.time.Clock;
@@ -18,6 +20,7 @@ public final class GameService {
     private final GameRequestReader requests = new GameRequestReader();
     private final GameResponseBuilder responses = new GameResponseBuilder();
     private final GameEventLogger events;
+    private final ProtocolCodec codec = new ProtocolCodec();
 
     public GameService() {
         this(new RoomManager(), new MatchEventWriter(Path.of("logs", "matches")), Clock.systemUTC());
@@ -29,10 +32,15 @@ public final class GameService {
         this.events = new GameEventLogger(Objects.requireNonNull(matchWriter), clock);
     }
 
-    /** Người 1 gọi hàm này sau khi đọc Message từ socket. Session do Server gán. */
-    public List<OutboundMessage> handle(String sessionId, Message request) {
+    /** Người 1 đưa thẳng dòng đọc từ socket vào đây. Ví dụ MOVE|ABC234|e2e4. */
+    public List<OutboundMessage> handle(String sessionId, String line) {
         requests.validateSessionId(sessionId);
-        Objects.requireNonNull(request, "request");
+        Message request;
+        try {
+            request = codec.decode(line);
+        } catch (ProtocolException ex) {
+            return responses.error(sessionId, ex.getCode());
+        }
 
         try {
             MessageType type = request.getType();
@@ -57,9 +65,15 @@ public final class GameService {
             throw new GameException("UNSUPPORTED_COMMAND");
         } catch (GameException ex) {
             if (request.getType() == MessageType.MOVE) {
-                events.rejectedMove(sessionId, request, ex.getCode());
+                // Chỉ đưa mã phòng đã hợp lệ vào log/phản hồi.
+                String roomId = "";
+                if (request.getFieldCount() > 0 && request.getField(0).matches("[A-Z0-9]{6}")) {
+                    roomId = request.getField(0);
+                }
+                events.rejectedMove(sessionId, roomId, ex.getCode());
+                return responses.rejectedMove(sessionId, roomId, ex.getCode());
             }
-            return responses.error(sessionId, request, ex.getCode());
+            return responses.error(sessionId, ex.getCode());
         }
     }
 
@@ -70,8 +84,8 @@ public final class GameService {
         synchronized (rooms) {
             GameRoom room = rooms.createRoom(sessionId, playerName);
             synchronized (room) {
-                events.write("ROOM_CREATED", room, request.getRequestId(), null);
-                return responses.roomResponse(sessionId, MessageType.ROOM_CREATED, request, room, 1);
+                events.write("ROOM_CREATED", room, null);
+                return responses.roomResponse(sessionId, MessageType.ROOM_CREATED, room);
             }
         }
     }
@@ -84,8 +98,8 @@ public final class GameService {
             GameRoom room = rooms.getRoom(roomId);
             synchronized (room) {
                 rooms.joinRoom(sessionId, playerName, roomId);
-                events.write("GAME_START", room, request.getRequestId(), null);
-                return responses.broadcast(room, MessageType.GAME_START, request, sessionId, 1);
+                events.write("GAME_START", room, null);
+                return responses.broadcast(room, MessageType.GAME_START);
             }
         }
     }
@@ -119,24 +133,23 @@ public final class GameService {
                     player.getColor(), uci, clock.instant(), room.rules.getFen());
             room.history.add(acceptedMove);
             room.version++;
-            events.write("MOVE_ACCEPTED", room, request.getRequestId(), acceptedMove);
+            events.write("MOVE_ACCEPTED", room, acceptedMove);
 
             // 6. Kiểm tra nước này có làm ván đấu kết thúc không.
-            boolean gameEnded = finishIfNecessary(room, player, request);
+            boolean gameEnded = finishIfNecessary(room, player);
 
             // 7. Chuẩn bị trạng thái mới cho cả hai Client. Người 1 sẽ gửi qua socket.
-            int fromPly = responses.recentHistoryStart(room);
             List<OutboundMessage> output = new ArrayList<>();
-            output.addAll(responses.broadcast(room, MessageType.STATE, request, sessionId, fromPly));
+            output.addAll(responses.broadcast(room, MessageType.STATE));
             if (gameEnded) {
-                output.addAll(responses.broadcast(room, MessageType.GAME_END, request, sessionId, fromPly));
+                output.addAll(responses.broadcast(room, MessageType.GAME_END));
             }
             return Collections.unmodifiableList(output);
         }
     }
 
     private List<OutboundMessage> handleResign(String sessionId, Message request) {
-        requests.requireEmptyPayload(request);
+        requests.requireFieldCount(request, 1);
         String roomId = requests.readRoomId(request);
         GameRoom room = rooms.getRoom(roomId);
 
@@ -146,9 +159,8 @@ public final class GameService {
             GameRoom.Player player = room.getPlayer(sessionId);
             PlayerColor winner = player.getColor().opposite();
             room.finish(winner.name() + "_WIN", "RESIGNATION");
-            events.write("GAME_END", room, request.getRequestId(), null);
-            int fromPly = responses.recentHistoryStart(room);
-            return responses.broadcast(room, MessageType.GAME_END, request, sessionId, fromPly);
+            events.write("GAME_END", room, null);
+            return responses.broadcast(room, MessageType.GAME_END);
         }
     }
 
@@ -160,15 +172,15 @@ public final class GameService {
         synchronized (room) {
             rooms.requireMember(room, sessionId);
             if (fromPly > room.history.size() + 1) {
-                throw new GameException("INVALID_PAYLOAD");
+                throw new GameException("INVALID_ARGUMENTS");
             }
-            return responses.roomResponse(sessionId, MessageType.STATE, request, room, fromPly);
+            return responses.stateWithHistory(sessionId, room, fromPly);
         }
     }
 
     private List<OutboundMessage> handlePing(String sessionId, Message request) {
-        requests.requireEmptyPayload(request);
-        return responses.pong(sessionId, request);
+        requests.requireFieldCount(request, 0);
+        return Collections.singletonList(new OutboundMessage(sessionId, "PONG"));
     }
 
     /** Người 1 gọi khi EOF/timeout/lỗi I/O, sau khi dừng luồng đọc của session này. */
@@ -191,7 +203,7 @@ public final class GameService {
                         remaining = room.white;
                     }
                     room.finish(remaining.getColor().name() + "_WIN", "DISCONNECT");
-                    events.write("GAME_END", room, null, null);
+                    events.write("GAME_END", room, null);
                     output = responses.disconnected(room, remaining);
                 }
                 rooms.removeSession(sessionId);
@@ -200,7 +212,7 @@ public final class GameService {
         }
     }
 
-    private boolean finishIfNecessary(GameRoom room, GameRoom.Player mover, Message request) {
+    private boolean finishIfNecessary(GameRoom room, GameRoom.Player mover) {
         ChessRulesAdapter.PositionStatus status = room.rules.getStatus();
         if (status == ChessRulesAdapter.PositionStatus.IN_PROGRESS) {
             return false;
@@ -211,7 +223,7 @@ public final class GameService {
             result = mover.getColor().name() + "_WIN";
         }
         room.finish(result, status.name());
-        events.write("GAME_END", room, request.getRequestId(), null);
+        events.write("GAME_END", room, null);
         return true;
     }
 

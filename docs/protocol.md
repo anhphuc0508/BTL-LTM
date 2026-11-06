@@ -1,128 +1,133 @@
-# Giao thức Chess Online — phiên bản 1
+# Giao thức chuỗi — phiên bản 2
 
-Đặc tả hiện được triển khai trên nhánh `feature/game-protocol`; người 1 và 2 cần review khi tích hợp.
+Mỗi thông điệp là **một dòng chuỗi UTF-8**, các giá trị cách nhau bằng dấu `|`.
+Ví dụ: `MOVE|ABC234|e2e4`. Bên gửi thêm xuống dòng rồi flush; bên nhận đọc một dòng.
+Không có JSON, payload, requestId hay bước mã hóa/giải mã bảo mật.
 
-## Framing và envelope
+Phiên bản này thay thế giao thức JSON cũ theo yêu cầu đổi sang chuỗi.
+Code tích hợp cũ cần đổi cách gửi/đọc theo bảng dưới.
 
-- TCP, UTF-8, một JSON object trên một dòng, kết thúc bằng LF (`\n`). Cổng dự kiến: 5000, do phần 1 cấu hình.
-- `ProtocolCodec.encode(message)` **đã thêm LF**; không gọi thêm `println` lên chuỗi này.
-- `decode(line)` nhận một dòng đã bỏ CR/LF. JSON không có newline thô bên trong; newline trong chuỗi được JSON escape.
-- Tối đa **1.048.576 byte UTF-8 mỗi dòng**, không tính terminator; độ sâu JSON tối đa 32.
-- Người 1 phải dùng bộ đọc dòng có giới hạn **trước khi** cấp phát toàn bộ dòng, timeout và UTF-8 decoder từ chối byte lỗi. `readLine()` không giới hạn chỉ được dùng trong test harness.
-- Từ chối duplicate key, JSON nối đuôi, giá trị `type` lạ, field envelope lạ, kiểu dữ liệu sai.
-- Không dùng Java serialization, Socket.IO, WebSocket hoặc polymorphic JSON typing.
+## Client gửi
 
-```json
-{"type":"MOVE","requestId":"req-17","roomId":"AB23CD","payload":{"move":"e2e4"}}
+| Chuỗi | Ý nghĩa |
+| --- | --- |
+| `CREATE_ROOM|Phúc` | Tạo phòng, người tạo cầm Trắng |
+| `JOIN_ROOM|ABC234|Nam` | Vào phòng, người vào cầm Đen |
+| `MOVE|ABC234|e2e4` | Đi từ e2 đến e4 |
+| `MOVE|ABC234|a7a8q` | Phong cấp thành hậu |
+| `RESIGN|ABC234` | Đầu hàng |
+| `GET_STATE|ABC234` | Lấy trạng thái và tối đa 100 nước lịch sử từ nước 1 |
+| `GET_STATE|ABC234|101` | Lấy trạng thái và lịch sử từ nước 101 |
+| `PING` | Kiểm tra kết nối; Server trả `PONG` |
+
+- Tên người chơi sau khi bỏ khoảng trắng hai đầu dài 1–40 ký tự Unicode; không chứa `|` hay ký tự điều khiển.
+- Mã phòng gồm đúng 6 ký tự chữ hoa/số, do Server tạo.
+- Nước đi: ô đi + ô đến, thêm `q/r/b/n` nếu phong cấp; ví dụ `e2e4`, `a7a8n`.
+- Không gửi màu, FEN, session hay kết quả từ Client. Server tự xác định.
+- Không thêm/bớt ô so với bảng. Không có escape cho dấu `|`.
+- Mỗi dòng tối đa **16.384 byte UTF-8**, không tính ký tự xuống dòng.
+- Giữ nguyên ô rỗng bằng `line.split("\\|", -1)`. Không gọi `trim()` trên cả dòng.
+
+## Server trả trạng thái
+
+Các lệnh `ROOM_CREATED`, `GAME_START`, `STATE`, `GAME_END` có cùng thứ tự ô:
+
+```text
+TYPE|roomId|yourColor|status|turn|ply|fen|inCheck|result|reason|matchId|version|lastMove|whiteName|blackName
 ```
 
-| Field | Quy định |
-| --- | --- |
-| `type` | Chuỗi bắt buộc, phân biệt hoa/thường, tên trong `MessageType` |
-| `requestId` | Tùy chọn/null; 1–64 ký tự `[A-Za-z0-9._:-]` |
-| `roomId` | Tùy chọn/null ở envelope; bắt buộc với lệnh liên quan phòng; 6 ký tự `[A-Z0-9]` |
-| `payload` | Object; có thể bỏ qua để dùng `{}`; không chấp nhận `null`, array hoặc scalar trên wire |
+Sau khi `String[] parts = line.split("\\|", -1);`:
 
-`requestId` chỉ dùng đối chiếu, **không phải khóa chống gửi trùng**. Không tự gửi lại `MOVE` khi timeout; dùng `GET_STATE` để kiểm tra.
-Khi broadcast, chỉ phản hồi gửi về người yêu cầu có `requestId`; thông báo tới đối thủ bỏ field này để tránh trùng ID giữa hai client.
-Session do Server gán và truyền trực tiếp vào `handle(sessionId, message)`. Client không được gửi session, màu quân, FEN hoặc kết quả để Server tin theo.
+| Vị trí trong parts | Giá trị | Ví dụ / ý nghĩa |
+| ---: | --- | --- |
+| 0 | TYPE | ROOM_CREATED / GAME_START / STATE / GAME_END |
+| 1 | roomId | ABC234 |
+| 2 | yourColor | WHITE / BLACK, riêng cho người nhận |
+| 3 | status | WAITING / IN_PROGRESS / FINISHED |
+| 4 | turn | WHITE / BLACK; chỉ cho đi khi IN_PROGRESS |
+| 5 | ply | Số nước đã chấp nhận, ban đầu 0; mỗi bên đi tính một nước |
+| 6 | fen | Toàn bộ bàn cờ ở dạng FEN; chứa dấu cách nhưng không chứa dấu `|` |
+| 7 | inCheck | true / false |
+| 8 | result | Rỗng khi chưa kết thúc; WHITE_WIN / BLACK_WIN / DRAW |
+| 9 | reason | Rỗng khi chưa kết thúc; lý do kết thúc |
+| 10 | matchId | UUID riêng cho ván |
+| 11 | version | Số phiên bản trạng thái tăng khi trạng thái đổi |
+| 12 | lastMove | Nước gần nhất, rỗng khi chưa đi nước nào |
+| 13 | whiteName | Tên người cầm Trắng |
+| 14 | blackName | Tên người cầm Đen, rỗng khi đang chờ |
 
-## Lệnh Client → Server
+Ví dụ phòng mới, chưa có người Đen:
 
-Chỉ các field payload liệt kê dưới đây được chấp nhận. Field thừa bị từ chối.
-
-| Lệnh | `roomId` | Payload | Kết quả |
-| --- | --- | --- | --- |
-| `CREATE_ROOM` | Phải bỏ qua/null | `{"playerName":"An"}` | `ROOM_CREATED`, người tạo là Trắng, trạng thái `WAITING` |
-| `JOIN_ROOM` | Bắt buộc | `{"playerName":"Bình"}` | `GAME_START` cho cả hai, người vào là Đen |
-| `MOVE` | Bắt buộc | `{"move":"e2e4"}` | `STATE` cho cả hai; lỗi trả `MOVE_REJECTED` cho người gửi |
-| `RESIGN` | Bắt buộc | `{}` | `GAME_END` cho cả hai; đối thủ thắng |
-| `GET_STATE` | Bắt buộc | `{}` hoặc `{"fromPly":101}` | `STATE` riêng cho người yêu cầu; đồng bộ bàn cờ và một trang lịch sử |
-| `PING` | Không dùng | `{}` | `PONG`; không đổi trạng thái phòng |
-
-Tên hiển thị: trim khoảng trắng, 1–40 Unicode code point, không có ký tự điều khiển. Tên không phải danh tính/xác thực.
-UCI: `[a-h][1-8][a-h][1-8][qrbn]?`, viết thường; ví dụ `e2e4`, phong cấp `e7e8q`, nhập thành `e1g1`.
-Một session chỉ tham gia một phòng đang chờ/đang chơi. Không tự tham gia hai bên của một ván.
-Sau khi ván kết thúc, session có thể tạo/vào phòng mới; phòng cũ được xóa khi cả hai không còn gắn với phòng.
-
-## Phản hồi Server → Client
-
-`ROOM_CREATED`, `GAME_START`, `STATE`, `GAME_END` cùng dùng payload snapshot:
-
-| Field | Ý nghĩa |
-| --- | --- |
-| `matchId` | UUID riêng của ván, không tái sử dụng dù mã phòng có thể được dùng lại |
-| `version` | Số phiên bản trạng thái của ván, tăng khi bắt đầu, đi cờ hoặc kết thúc |
-| `status` | `WAITING`, `IN_PROGRESS`, `FINISHED` |
-| `yourColor` | `WHITE` hoặc `BLACK`, riêng theo người nhận |
-| `whitePlayer`, `blackPlayer` | Tên hiển thị; chưa có `blackPlayer` khi chờ |
-| `fen` | Bàn cờ do Chesslib xuất; Client render trực tiếp |
-| `turn` | Màu tới lượt; khi `FINISHED` field này chỉ phản ánh FEN, không cho phép đi tiếp |
-| `inCheck` | Bên tới lượt có đang bị chiếu |
-| `moveNumber` | Số half-move/ply đã chấp nhận; bắt đầu từ 0 |
-| `lastMove` | UCI mới nhất, bỏ qua nếu chưa có nước đi |
-| `history` | Một trang tối đa 100 bản ghi hợp lệ, thứ tự tăng dần theo `ply` |
-| `historyFromPly` | Ply đầu tiên được yêu cầu trong trang |
-| `nextHistoryPly` | Nếu còn trang tiếp; dùng trong `GET_STATE` tiếp theo |
-| `result`, `reason` | Chỉ có khi kết thúc; xem bảng dưới |
-
-Mỗi bản ghi `history` gồm `roomId`, `matchId`, `ply`, `color`, `uci`, `acceptedAt` (UTC ISO 8601), `fen` sau nước đi.
-Chưa sinh SAN; giao diện hiển thị UCI đúng theo dữ liệu Server.
-
-Broadcast thông thường chứa tối đa 100 nước mới nhất. Để lấy **toàn bộ** lịch sử, gọi `GET_STATE` từ `fromPly=1` rồi đi theo `nextHistoryPly` đến khi field này không còn.
-Phân trang giữ kích thước thông điệp có giới hạn kể cả ván dài. Snapshot bàn cờ luôn là trạng thái hiện tại, còn `history` là trang được yêu cầu.
-Client ghép lịch sử theo `(matchId, ply)` để tránh thêm trùng; không coi mỗi `STATE` là một nước đi mới.
-Không áp dụng snapshot có `version` thấp hơn trạng thái đã có. Phiên bản bằng nhau vẫn có thể chứa trang lịch sử khác hoặc `GAME_END` cho nước cuối.
-
-| Kết quả | Lý do |
-| --- | --- |
-| `WHITE_WIN` / `BLACK_WIN` | `CHECKMATE`, `RESIGNATION`, `DISCONNECT` |
-| `DRAW` | `STALEMATE`, `INSUFFICIENT_MATERIAL`, `FIFTY_MOVE_RULE`, `THREEFOLD_REPETITION` |
-
-MVP tự kết thúc khi lặp ba lần hoặc đủ 50 nước không bắt quân/đi tốt; chưa có thao tác yêu cầu hòa theo quy trình thi đấu FIDE.
-Nước dẫn tới kết thúc gửi `STATE` rồi `GAME_END` tới hai người, cùng snapshot cuối.
-Đối thủ rớt kết nối khi đang chơi: người còn lại nhận `OPPONENT_DISCONNECTED` (matchId/version/reason) rồi `GAME_END` với lý do `DISCONNECT`. Không có reconnect/resume phiên đấu trong phiên bản này.
-
-## Ví dụ luồng hai người
-
-```jsonl
-{"type":"CREATE_ROOM","requestId":"c1","payload":{"playerName":"An"}}
-{"type":"JOIN_ROOM","requestId":"j1","roomId":"AB23CD","payload":{"playerName":"Bình"}}
-{"type":"MOVE","requestId":"m1","roomId":"AB23CD","payload":{"move":"e2e4"}}
-{"type":"MOVE_REJECTED","requestId":"m2","roomId":"AB23CD","payload":{"reason":"NOT_YOUR_TURN"}}
-{"type":"GET_STATE","requestId":"s1","roomId":"AB23CD","payload":{"fromPly":1}}
-{"type":"RESIGN","requestId":"r1","roomId":"AB23CD","payload":{}}
+```text
+ROOM_CREATED|ABC234|WHITE|WAITING|WHITE|0|rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1|false|||12345678-1234-1234-1234-123456789abc|0||Phúc|
 ```
 
-Mã phòng trong ví dụ là minh họa; dùng mã trả từ `ROOM_CREATED` khi chạy thực tế.
-Ví dụ snapshot `STATE` sau `e2e4` (thời gian/UUID minh họa):
+Tạo phòng: trả ROOM_CREATED cho người tạo.
+Vào phòng: gửi GAME_START cho cả hai, mỗi người nhận đúng màu của mình.
+Nước hợp lệ: gửi STATE mới cho cả hai. Nếu kết thúc ván, gửi thêm GAME_END cho cả hai.
+Đầu hàng: gửi GAME_END cho cả hai.
 
-```json
-{"type":"STATE","requestId":"m1","roomId":"AB23CD","payload":{"matchId":"30138bd9-98e7-4c32-a403-a985340dd25d","version":2,"status":"IN_PROGRESS","yourColor":"WHITE","whitePlayer":"An","blackPlayer":"Bình","fen":"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1","turn":"BLACK","inCheck":false,"moveNumber":1,"lastMove":"e2e4","history":[{"roomId":"AB23CD","matchId":"30138bd9-98e7-4c32-a403-a985340dd25d","ply":1,"color":"WHITE","uci":"e2e4","acceptedAt":"2026-11-06T00:00:00Z","fen":"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"}],"historyFromPly":1}}
+## Lịch sử khi GET_STATE
+
+Server trả lần lượt:
+
+1. Một dòng STATE.
+2. Từ 0 đến 100 dòng HISTORY.
+3. Một dòng HISTORY_END, kể cả trang rỗng.
+
+```text
+HISTORY|roomId|matchId|ply|color|uci|acceptedAt|fen
+HISTORY_END|roomId|matchId|nextPly
 ```
 
-FEN do thư viện sinh; không hardcode trường en passant theo ví dụ tài liệu thiết kế.
+`acceptedAt` là thời điểm UTC như `2026-11-06T00:00:00Z`.
+`nextPly=0` nghĩa là đã hết lịch sử ở thời điểm lấy trang.
+Nếu nextPly=101, gửi tiếp `GET_STATE|ABC234|101`.
+fromPly phải là số nguyên từ 1 đến tổng số nước + 1.
 
-## Lỗi
+Các STATE tự phát sau MOVE không kèm các dòng HISTORY; Client có thể thêm lastMove theo ply.
+Khi cần đồng bộ đầy đủ, dùng GET_STATE và ghép lịch sử theo (matchId, ply), không thêm trùng.
+Client gửi từng yêu cầu GET_STATE sau khi đã nhận HISTORY_END của yêu cầu trước.
 
-`ERROR` và `MOVE_REJECTED` có payload `{"reason":"CODE"}`. Lỗi nghiệp vụ của lệnh `MOVE` dùng `MOVE_REJECTED`; lệnh khác dùng `ERROR`.
-Lỗi framing/JSON do `ProtocolCodec` phát sinh `ProtocolException`; người 1 bắt exception này và gửi `ERROR`, không trả raw input hoặc stack trace về Client.
+## Thông báo và lỗi
 
-| Mã | Ý nghĩa |
+```text
+PONG
+ERROR|reason
+MOVE_REJECTED|roomId|reason
+OPPONENT_DISCONNECTED|roomId|matchId|version|DISCONNECT
+```
+
+Nếu mã phòng trong MOVE thiếu/sai, ô roomId trong MOVE_REJECTED để rỗng.
+Khi đối thủ rớt kết nối, người còn lại nhận OPPONENT_DISCONNECTED rồi GAME_END với lý do DISCONNECT.
+
+| Mã lỗi | Ý nghĩa |
 | --- | --- |
-| `BAD_MESSAGE` | Envelope/JSON không hợp lệ, kiểu hoặc tên thông điệp lạ |
-| `MESSAGE_TOO_LARGE` | Vượt giới hạn byte |
-| `UNSUPPORTED_COMMAND` | Client gửi một type chỉ được Server phát |
-| `INVALID_PAYLOAD` | Thiếu field, sai kiểu, field thừa hoặc trang lịch sử sai |
-| `INVALID_PLAYER_NAME` | Tên rỗng/quá dài/có ký tự điều khiển |
-| `INVALID_MOVE_FORMAT` | Chuỗi UCI sai định dạng |
-| `ROOM_ID_REQUIRED` | Lệnh cần phòng nhưng không gửi mã |
-| `ROOM_NOT_FOUND` | Không có phòng với mã này |
-| `ROOM_FULL` | Phòng đã có hai người |
-| `ALREADY_IN_ROOM` | Session đã có phòng đang chờ/đang chơi |
-| `NOT_IN_ROOM` | Người gửi không thuộc phòng |
-| `GAME_NOT_STARTED` | Chưa đủ hai người |
-| `GAME_FINISHED` | Ván đã kết thúc |
-| `NOT_YOUR_TURN` | Không tới lượt người gửi |
-| `ILLEGAL_MOVE` | Thư viện từ chối nước đi |
-| `SERVER_BUSY` | Đạt giới hạn phòng được cấu hình (mặc định 10.000) |
+| BAD_MESSAGE | Dòng trống, lệnh không nhận diện được hoặc chứa xuống dòng |
+| MESSAGE_TOO_LARGE | Vượt giới hạn byte |
+| INVALID_ARGUMENTS | Sai số ô hoặc fromPly không hợp lệ |
+| INVALID_PLAYER_NAME | Tên không hợp lệ |
+| ROOM_ID_REQUIRED / INVALID_ROOM_ID | Thiếu/sai định dạng mã phòng |
+| INVALID_MOVE_FORMAT | Chuỗi nước đi sai định dạng |
+| ROOM_NOT_FOUND / ROOM_FULL | Không tìm thấy phòng / phòng đủ hai người |
+| ALREADY_IN_ROOM / NOT_IN_ROOM | Đã ở phòng khác đang hoạt động / không thuộc phòng |
+| GAME_NOT_STARTED / GAME_FINISHED | Ván chưa bắt đầu / đã kết thúc |
+| NOT_YOUR_TURN / ILLEGAL_MOVE | Sai lượt / nước đi sai luật |
+| SERVER_BUSY | Đã đạt giới hạn số phòng |
+| UNSUPPORTED_COMMAND | Client gửi loại thông điệp chỉ dành cho Server |
+
+Lý do kết thúc: CHECKMATE, STALEMATE, INSUFFICIENT_MATERIAL, FIFTY_MOVE_RULE,
+THREEFOLD_REPETITION, RESIGNATION hoặc DISCONNECT.
+Bản hiện tại tự kết thúc hòa khi lặp ba lần/50 nước.
+
+## Framing và thứ tự
+
+`ProtocolCodec.decode()` nhận dòng đã bỏ ký tự kết thúc dòng.
+`encode()` và `OutboundMessage.getMessage()` trả chuỗi **chưa có xuống dòng**.
+Bên gửi dùng `println(line)` và flush, hoặc `write(line + "\n")` rồi flush.
+
+TCP có thể chia/gộp dữ liệu; một lần read không tương ứng một lệnh.
+Tầng transport của người 1 cần đọc theo dòng và áp giới hạn trước khi cấp phát dòng quá lớn.
+Một GameService dùng chung cho Server; mỗi session xử lý lệnh theo thứ tự.
+Hàng đợi gửi cần giữ thứ tự phản hồi trong phòng và không trộn byte giữa các luồng.
+Client bỏ snapshot có version thấp hơn version đã hiển thị trong cùng matchId.

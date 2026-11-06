@@ -3,7 +3,6 @@ package com.chess.server.game;
 import com.chess.common.protocol.Message;
 import com.chess.common.protocol.MessageType;
 import com.chess.common.protocol.ProtocolCodec;
-import com.chess.common.protocol.ProtocolException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -37,39 +36,42 @@ class GameServiceTcpIntegrationTest {
     @Test
     void twoTcpClientsPlayRejectMoveAndHandleEof() throws Exception {
         try (Harness server = new Harness(); Peer white = server.connect(); Peer black = server.connect()) {
-            white.send(new Message(CREATE_ROOM, "create", null, CODEC.newPayload().put("playerName", "Trắng")));
-            String room = white.receive().roomId();
-            black.send(new Message(JOIN_ROOM, "join", room, CODEC.newPayload().put("playerName", "Đen")));
-            assertEquals(GAME_START, white.receive().type());
-            assertEquals("BLACK", black.receive().payload().path("yourColor").asText());
+            white.send("CREATE_ROOM|Trắng");
+            String room = white.receive().getField(0);
+            black.send("JOIN_ROOM|" + room + "|Đen");
+            Message start = white.receive();
+            assertEquals(GAME_START, start.getType());
+            assertEquals("Trắng", start.getField(12));
+            assertEquals("Đen", start.getField(13));
+            assertEquals("BLACK", black.receive().getField(1));
 
-            white.send(new Message(MOVE, "move", room, CODEC.newPayload().put("move", "e2e4")));
+            white.send("MOVE|" + room + "|e2e4");
             Message a = white.receive();
             Message b = black.receive();
-            assertEquals(STATE, a.type());
-            assertEquals(a.payload().path("fen"), b.payload().path("fen"));
-            white.send(new Message(MOVE, "again", room, CODEC.newPayload().put("move", "d2d4")));
-            assertEquals(MOVE_REJECTED, white.receive().type());
+            assertEquals(STATE, a.getType());
+            assertEquals(a.getField(5), b.getField(5));
+            assertEquals("1", a.getField(4));
+            white.send("MOVE|" + room + "|d2d4");
+            assertEquals(MOVE_REJECTED, white.receive().getType());
 
             black.close();
-            assertEquals(OPPONENT_DISCONNECTED, white.receive().type());
+            assertEquals(OPPONENT_DISCONNECTED, white.receive().getType());
             Message end = white.receive();
-            assertEquals(GAME_END, end.type());
-            assertEquals("WHITE_WIN", end.payload().path("result").asText());
-            assertEquals(1, end.payload().path("history").size());
+            assertEquals(GAME_END, end.getType());
+            assertEquals("WHITE_WIN", end.getField(7));
+            assertEquals("1", end.getField(4));
         }
     }
 
     @Test
-    void concatenatedLinesAndMalformedJsonDoNotBreakFollowingRequests() throws Exception {
+    void concatenatedLinesAndMalformedCommandsDoNotBreakFollowingRequests() throws Exception {
         try (Harness server = new Harness(); Peer peer = server.connect()) {
-            peer.raw(CODEC.encode(new Message(PING, "p1", null, null))
-                    + "{broken json}\n" + CODEC.encode(new Message(PING, "p2", null, null)));
-            assertEquals("p1", peer.receive().requestId());
+            peer.raw("PING\nnot-a-command\nPING\n");
+            assertEquals(PONG, peer.receive().getType());
             Message error = peer.receive();
-            assertEquals(ERROR, error.type());
-            assertEquals("BAD_MESSAGE", error.payload().path("reason").asText());
-            assertEquals("p2", peer.receive().requestId());
+            assertEquals(ERROR, error.getType());
+            assertEquals("BAD_MESSAGE", error.getField(0));
+            assertEquals(PONG, peer.receive().getType());
         }
     }
 
@@ -90,8 +92,8 @@ class GameServiceTcpIntegrationTest {
             writer.flush();
         }
 
-        void send(Message message) throws IOException {
-            raw(CODEC.encode(message));
+        void send(String line) throws IOException {
+            raw(line + "\n");
         }
 
         Message receive() throws IOException {
@@ -140,11 +142,7 @@ class GameServiceTcpIntegrationTest {
                 connections.put(session, peer);
                 String line;
                 while ((line = peer.reader.readLine()) != null) {
-                    try {
-                        route(game.handle(session, CODEC.decode(line)));
-                    } catch (ProtocolException ex) {
-                        peer.send(new Message(ERROR, null, null, CODEC.newPayload().put("reason", ex.code())));
-                    }
+                    route(game.handle(session, line));
                 }
             } catch (SocketException ex) {
                 if (!listener.isClosed()) { errors.add(ex); }
@@ -158,10 +156,10 @@ class GameServiceTcpIntegrationTest {
 
         void route(List<OutboundMessage> output) {
             for (OutboundMessage message : output) {
-                Peer recipient = connections.get(message.recipientSessionId());
+                Peer recipient = connections.get(message.getRecipientSessionId());
                 if (recipient != null) {
                     try {
-                        recipient.send(message.message());
+                        recipient.send(message.getMessage());
                     } catch (IOException ex) {
                         if (!listener.isClosed() && !recipient.socket.isClosed()) { errors.add(ex); }
                     }
