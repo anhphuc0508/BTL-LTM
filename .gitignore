@@ -3,3 +3,6 @@ target/
 
 # Runtime logs
 logs/
+
+# Local build tools and dependency cache
+.tools/
