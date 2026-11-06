@@ -1,5 +1,10 @@
 package com.chess.common.protocol;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Iterator;
+import java.util.Objects;
+import java.util.Set;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.StreamReadConstraints;
 import com.fasterxml.jackson.core.StreamReadFeature;
@@ -8,12 +13,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Iterator;
-import java.util.Objects;
-import java.util.Set;
-
-/** Đọc/ghi JSON Lines. Lớp này dùng chung cho Server và Client. */
 public final class ProtocolCodec {
     public static final int MAX_LINE_BYTES = 1_048_576;
     private static final Set<String> FIELDS = Set.of("type", "requestId", "roomId", "payload");
