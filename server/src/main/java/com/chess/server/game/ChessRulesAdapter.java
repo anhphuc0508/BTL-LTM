@@ -3,7 +3,7 @@ package com.chess.server.game;
 import com.github.bhlangonijr.chesslib.Board;
 import com.github.bhlangonijr.chesslib.move.Move;
 
-/** A room owns one adapter. Access must be guarded by that room's lock. */
+/** Nối code của nhóm với thư viện luật cờ Chesslib. Mỗi phòng có một bàn cờ riêng. */
 public final class ChessRulesAdapter {
     public enum PositionStatus {
         IN_PROGRESS, CHECKMATE, STALEMATE, INSUFFICIENT_MATERIAL,
@@ -15,7 +15,7 @@ public final class ChessRulesAdapter {
     public ChessRulesAdapter() {
     }
 
-    /** For server-side fixtures/imports only; the wire protocol never accepts a FEN from a client. */
+    /** Nạp vị trí để kiểm thử phía Server. Client không được tự gửi FEN để thay bàn cờ. */
     public ChessRulesAdapter(String fen) {
         board.loadFromFen(fen);
     }
@@ -25,7 +25,7 @@ public final class ChessRulesAdapter {
             return false;
         }
         Move move = new Move(uci, board.getSideToMove());
-        // doMove alone does not check piece movement geometry. Check the generated legal moves first.
+        // Kiểm tra nước đi nằm trong danh sách hợp lệ trước khi thay đổi bàn cờ.
         if (!board.legalMoves().contains(move)) {
             return false;
         }
@@ -37,6 +37,10 @@ public final class ChessRulesAdapter {
     }
 
     public PlayerColor sideToMove() {
+        return getSideToMove();
+    }
+
+    public PlayerColor getSideToMove() {
         return PlayerColor.valueOf(board.getSideToMove().name());
     }
 

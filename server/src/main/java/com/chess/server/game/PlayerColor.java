@@ -4,6 +4,9 @@ public enum PlayerColor {
     WHITE, BLACK;
 
     public PlayerColor opposite() {
-        return this == WHITE ? BLACK : WHITE;
+        if (this == WHITE) {
+            return BLACK;
+        }
+        return WHITE;
     }
 }

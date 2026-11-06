@@ -33,8 +33,18 @@ Message request = codec.decode(line);
 List<OutboundMessage> responses = gameService.handle(sessionId, request);
 ```
 
-Mỗi `OutboundMessage` chứa `recipientSessionId()` và `message()`. `ConnectionManager` tìm kết nối theo session, rồi ghi `codec.encode(message)` bằng UTF-8 và flush.
+Mỗi `OutboundMessage` có getter `getRecipientSessionId()` và `getMessage()`.
+Các hàm cũ `recipientSessionId()` và `message()` vẫn được giữ để tương thích.
+`ConnectionManager` tìm kết nối theo session, rồi ghi `codec.encode(message)` bằng UTF-8 và flush.
 `encode` đã có LF. Không ghi riêng từng byte từ nhiều thread hoặc dùng `println` làm thêm dòng trắng.
+
+`Message` hiện là class thường, dùng getter `getType()`, `getRequestId()`, `getRoomId()`, `getPayload()`.
+Constructor và các hàm cũ `type()`, `requestId()`, `roomId()`, `payload()` vẫn hoạt động.
+`MoveRecord` cũng hỗ trợ cả getter và cách gọi cũ. Tên lệnh, tên field và cấu trúc JSON không đổi.
+
+`GameService` dùng if/else và mỗi lệnh có một hàm `handle...()` riêng.
+`GameRequestReader` đọc/kiểm tra JSON đầu vào; `GameResponseBuilder` tạo JSON đầu ra;
+`GameEventLogger` ghi game event. [Hướng dẫn đọc code](reading-guide.md).
 
 Khi EOF/timeout/lỗi I/O, dừng đọc session đó và gọi:
 
@@ -49,7 +59,9 @@ Không tái sử dụng session ID và không đọc session ID từ JSON Client
 ## Đồng thời và thứ tự
 
 - Mỗi `GameRoom` có khóa riêng. Kiểm tra lượt, apply engine, thêm history, tạo snapshot và ghi event diễn ra dưới cùng khóa.
-- `RoomManager` khóa ngắn cho thay đổi membership: create/join/disconnect. Các nước đi ở phòng khác nhau không cần cùng khóa phòng.
+- Tạo/vào/rời phòng lấy khóa `rooms` rồi khóa `room`, giữ đến khi chuẩn bị xong trạng thái và phản hồi.
+- Với MOVE/RESIGN/GET_STATE, `getRoom()` chỉ lấy khóa quản lý để tìm phòng, nhả khóa rồi mới khóa phòng để xử lý. Các nước đi ở phòng khác nhau dùng khóa phòng riêng.
+- Bên trong khóa phòng, `requireMember()` chỉ đọc ConcurrentHashMap. Không lấy khóa quản lý sau khi đã lấy khóa phòng; điều này tránh hai luồng chờ khóa ngược nhau. JOIN/DISCONNECT đã giữ khóa quản lý từ bên ngoài.
 - Mỗi session có một luồng đọc theo thứ tự. Cleanup chỉ chạy sau khi luồng đọc session đó đã dừng.
 - Không gọi I/O socket trong khóa phòng. Kết quả trả về là danh sách thông điệp với payload đã sao chép.
 - Người 1 cần hàng đợi gửi/khóa writer theo kết nối và cơ chế giữ thứ tự event trong phòng khi nhiều thread dispatch. `version` giúp Client bỏ snapshot cũ; khóa nghiệp vụ không tự bảo đảm thứ tự ghi TCP sau khi hàm đã trả về.

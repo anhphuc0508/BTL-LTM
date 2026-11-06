@@ -10,20 +10,24 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
-/** Optional per-match JSON Lines archive, separate from technical logs and in-memory history. */
+/** Lưu nhật ký từng ván vào file JSON Lines, tách riêng với technical log và lịch sử trong bộ nhớ. */
 public final class MatchEventWriter {
     private static final Logger LOG = LoggerFactory.getLogger(MatchEventWriter.class);
     private final Path directory;
 
     public MatchEventWriter(Path directory) {
-        this.directory = directory == null ? null : directory.toAbsolutePath().normalize();
+        if (directory == null) {
+            this.directory = null;
+        } else {
+            this.directory = directory.toAbsolutePath().normalize();
+        }
     }
 
     public static MatchEventWriter disabled() {
         return new MatchEventWriter(null);
     }
 
-    // Calls for a match are serialized by its room lock. Short-lived streams avoid leaking file handles.
+    // GameService đã khóa phòng trước khi ghi. Mỗi lần ghi xong sẽ đóng file ngay.
     public void write(String matchId, ObjectNode event) {
         if (directory == null) {
             return;
@@ -36,7 +40,7 @@ public final class MatchEventWriter {
             Files.writeString(directory.resolve(matchId + ".jsonl"), event.toString() + "\n",
                     StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException | SecurityException ex) {
-            // A disk failure must not cause an already-applied move to appear rejected to clients.
+            // Lỗi ghi file không được biến một nước đã hợp lệ thành phản hồi từ chối.
             LOG.error("event=MATCH_LOG_WRITE_FAILED matchId={}", matchId, ex);
         }
     }

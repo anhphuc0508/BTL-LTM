@@ -3,6 +3,7 @@ package com.chess.common.protocol;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -51,5 +52,27 @@ class ProtocolCodecTest {
         original.put("move", "e2e5");
         message.payload().put("move", "e2e6");
         assertEquals("e2e4", message.payload().path("move").asText());
+    }
+
+    @Test
+    void classAndGettersPreserveOriginalJsonContract() throws Exception {
+        Message message = new Message(MessageType.MOVE, "m1", "ABC234",
+                codec.newPayload().put("move", "e2e4"));
+        String expected = "{\"type\":\"MOVE\",\"requestId\":\"m1\",\"roomId\":\"ABC234\",\"payload\":{\"move\":\"e2e4\"}}\n";
+        assertEquals(expected, codec.encode(message));
+
+        // New getters and the old accessors can coexist in the two team members' code.
+        Message received = codec.decode(expected.stripTrailing());
+        assertEquals(message.type(), received.getType());
+        assertEquals(message.requestId(), received.getRequestId());
+        assertEquals(message.roomId(), received.getRoomId());
+        assertEquals(message.payload(), received.getPayload());
+        received.getPayload().put("move", "forged");
+        assertEquals("e2e4", received.payload().path("move").asText());
+
+        // Plain Jackson callers can still deserialize the envelope as with the original record.
+        assertEquals(message, new JsonMapper().readValue(expected, Message.class));
+        assertEquals("{\"type\":\"PING\",\"payload\":{}}\n",
+                codec.encode(new Message(MessageType.PING, null, null, null)));
     }
 }

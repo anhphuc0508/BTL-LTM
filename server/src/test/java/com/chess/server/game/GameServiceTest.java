@@ -263,14 +263,14 @@ class GameServiceTest {
     @Test
     void historyPaginationHasNoDuplicatesAndDoesNotExposeMutableState() {
         String roomId = start("white", "black");
-        manager.inRoom("white", roomId, room -> {
+        GameRoom room = manager.getRoom(roomId);
+        synchronized (room) {
             // Build a long archive fixture without relying on a contrived 101-ply legal opening.
             for (int ply = 1; ply <= 105; ply++) {
                 room.history.add(new MoveRecord(room.id, room.matchId, ply, PlayerColor.WHITE,
                         "e2e4", clock.instant(), room.rules.getFen()));
             }
-            return null;
-        });
+        }
         var page1 = state("white", roomId);
         assertEquals(100, page1.path("history").size());
         assertEquals(101, page1.path("nextHistoryPly").asInt());
@@ -285,5 +285,65 @@ class GameServiceTest {
                 codec.newPayload().put("fromPly", 107))), ERROR, "INVALID_PAYLOAD");
         page1.removeAll();
         assertEquals(105, state("white", roomId).path("moveNumber").asInt());
+    }
+
+    @Test
+    @Timeout(15)
+    void lockingOneRoomDoesNotBlockMovesInAnotherRoom() throws Exception {
+        String a = start("a-white", "a-black");
+        String b = start("b-white", "b-black");
+        GameRoom roomA = manager.getRoom(a);
+        var executor = Executors.newFixedThreadPool(2);
+        CountDownLatch started = new CountDownLatch(1);
+        Future<List<OutboundMessage>> pendingA;
+        try {
+            synchronized (roomA) {
+                pendingA = executor.submit(() -> {
+                    started.countDown();
+                    return move("a-white", a, "e2e4");
+                });
+                assertTrue(started.await(5, TimeUnit.SECONDS));
+                var pendingB = executor.submit(() -> move("b-white", b, "d2d4"));
+                assertEquals(STATE, pendingB.get(5, TimeUnit.SECONDS).get(0).getMessage().getType());
+                assertFalse(pendingA.isDone());
+            }
+            assertEquals(STATE, pendingA.get(5, TimeUnit.SECONDS).get(0).getMessage().getType());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    @Timeout(15)
+    void simultaneousJoinCannotAssignBlackToTwoSessions() throws Exception {
+        String room = create("white");
+        var executor = Executors.newFixedThreadPool(4);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            List<Future<List<OutboundMessage>>> futures = new ArrayList<>();
+            for (int i = 0; i < 8; i++) {
+                String session = "joiner-" + i;
+                futures.add(executor.submit(() -> {
+                    start.await();
+                    return service.handle(session, request(JOIN_ROOM, room,
+                            codec.newPayload().put("playerName", session)));
+                }));
+            }
+            start.countDown();
+            int accepted = 0;
+            for (var future : futures) {
+                List<OutboundMessage> output = future.get(5, TimeUnit.SECONDS);
+                if (output.get(0).getMessage().getType() == GAME_START) {
+                    accepted++;
+                    assertEquals(2, output.size());
+                } else {
+                    reason(output, ERROR, "ROOM_FULL");
+                }
+            }
+            assertEquals(1, accepted);
+            assertEquals(1, manager.roomCount());
+        } finally {
+            executor.shutdownNow();
+        }
     }
 }

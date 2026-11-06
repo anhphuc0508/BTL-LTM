@@ -20,22 +20,23 @@ Lệnh `mvnw.cmd verify` hoàn thành **BUILD SUCCESS**; cả `common`, `server`
 
 | Test class | Số test | Failures | Errors | Skipped |
 | --- | ---: | ---: | ---: | ---: |
-| `ProtocolCodecTest` | 21 | 0 | 0 | 0 |
+| `ProtocolCodecTest` | 22 | 0 | 0 | 0 |
 | `ChessRulesAdapterTest` | 21 | 0 | 0 | 0 |
-| `GameServiceTest` | 21 | 0 | 0 | 0 |
+| `GameServiceTest` | 23 | 0 | 0 | 0 |
 | `GameLoggingTest` | 5 | 0 | 0 | 0 |
 | `GameServiceTcpIntegrationTest` | 2 | 0 | 0 | 0 |
-| **Tổng** | **70** | **0** | **0** | **0** |
+| **Tổng** | **73** | **0** | **0** | **0** |
 
 Số lượng có tính từng input của parameterized test. `client` hiện chưa có test vì giao diện/kết nối chưa triển khai.
+Sau khi viết lại bằng class/getter/if-else, toàn bộ 70 test trước vẫn qua; bổ sung 3 test kiểm tra JSON/API tương thích, khóa độc lập giữa hai phòng và tranh chấp cùng vào phòng.
 
 ## Bộ test tự động
 
 | Test class | Phạm vi |
 | --- | --- |
-| `ProtocolCodecTest` | JSON Lines, Unicode, round-trip, LF, payload bất biến, duplicate key, field/type sai, trailing JSON, giới hạn byte/depth |
+| `ProtocolCodecTest` | JSON Lines, Unicode, round-trip, LF, payload bất biến, duplicate key, field/type sai, trailing JSON, giới hạn byte/depth; class/getter vẫn tạo đúng JSON và hỗ trợ cách gọi cũ |
 | `ChessRulesAdapterTest` | Nước hợp lệ/sai hình học, đổi lượt, nhập thành hai bên, cấm nhập thành qua chiếu, phong cấp cả hai màu/4 loại quân, en passant và hết hiệu lực, quân bị ghim, chiếu hết, các kiểu hòa |
-| `GameServiceTest` | Create/join, màu quân, self-join/full room, session chỉ có một phòng, lượt/quyền/nước sai, chống giả color/FEN, history/timestamp, đầu hàng, chiếu hết/hòa, disconnect/cleanup, hai phòng độc lập, capacity, phân trang history, 32 yêu cầu đồng thời chỉ apply một lần |
+| `GameServiceTest` | Create/join, màu quân, self-join/full room, session chỉ có một phòng, lượt/quyền/nước sai, chống giả color/FEN, history/timestamp, đầu hàng, chiếu hết/hòa, disconnect/cleanup, hai phòng độc lập, capacity, phân trang history, 32 yêu cầu đồng thời chỉ apply một lần; khóa phòng A không chặn nước đi phòng B; nhiều session cùng JOIN chỉ một người thành Đen |
 | `GameLoggingTest` | Cấu hình Logback thật, event archive, rejection WARN, history không chứa nước sai, lỗi ổ đĩa, UUID file/path traversal |
 | `GameServiceTcpIntegrationTest` | Hai client TCP loopback giả lập, gửi/nhận state, sai lượt, EOF, nhiều JSON Lines trong cùng lần ghi, JSON lỗi không làm mất lệnh tiếp theo |
 

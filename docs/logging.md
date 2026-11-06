@@ -51,4 +51,7 @@ Thư mục `logs/`, `target/` và bộ công cụ cục bộ `.tools/` đã đư
 
 ## Kiểm chứng
 
+`GameEventLogger` nhận event từ `GameService`, giữ tên logger `GameService` như API ban đầu;
+`MatchEventWriter` chịu trách nhiệm ghi archive. Việc tách lớp giúp đọc luồng xử lý trận đấu dễ hơn.
+
 `GameLoggingTest` kiểm tra cấu hình Logback thật, file archive, đúng một lần ghi nước hợp lệ, nước bị từ chối tạo WARN nhưng không thêm history, lỗi ổ đĩa không làm nước đi bị trả sai, và phân tách file theo matchId.

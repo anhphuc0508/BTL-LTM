@@ -7,6 +7,9 @@ Nhánh `feature/game-protocol` đã triển khai phần 3: protocol JSON Lines v
 TCP Server chạy thật, giao diện Swing và Docker còn chờ phần 1 và 2 tích hợp.
 File `.gitkeep` giữ thư mục test trong Git.
 
+Để đọc phần 3, bắt đầu với [hướng dẫn ngắn](docs/reading-guide.md), rồi mở
+`GameService.handle()` và `handleMove()`. Code chính dùng class, getter, if/else và chú thích tiếng Việt.
+
 ## Build và kiểm thử
 
 Cần **JDK 17 trở lên** và Internet ở lần chạy đầu để tải Maven/dependency từ Maven Central và JitPack.

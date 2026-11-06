@@ -9,6 +9,10 @@ final class GameException extends RuntimeException {
     }
 
     String code() {
+        return getCode();
+    }
+
+    String getCode() {
         return code;
     }
 }

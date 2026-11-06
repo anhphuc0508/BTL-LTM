@@ -9,10 +9,11 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Iterator;
 import java.util.Objects;
 import java.util.Set;
 
-/** Thread-safe after construction. One UTF-8 JSON object per line, without polymorphic typing. */
+/** Đọc/ghi JSON Lines. Lớp này dùng chung cho Server và Client. */
 public final class ProtocolCodec {
     public static final int MAX_LINE_BYTES = 1_048_576;
     private static final Set<String> FIELDS = Set.of("type", "requestId", "roomId", "payload");
@@ -27,7 +28,7 @@ public final class ProtocolCodec {
                 .maxNestingDepth(32).maxStringLength(MAX_LINE_BYTES).maxNumberLength(64).build());
     }
 
-    /** Accepts the line returned by a bounded line reader; terminators have already been removed. */
+    /** Đổi một dòng JSON (đã bỏ ký tự xuống dòng) thành Message. */
     public Message decode(String line) {
         if (line == null || line.isBlank()) {
             throw new ProtocolException("BAD_MESSAGE");
@@ -43,11 +44,13 @@ public final class ProtocolCodec {
             if (root == null || !root.isObject()) {
                 throw new ProtocolException("BAD_MESSAGE");
             }
-            root.fieldNames().forEachRemaining(field -> {
+            Iterator<String> fieldNames = root.fieldNames();
+            while (fieldNames.hasNext()) {
+                String field = fieldNames.next();
                 if (!FIELDS.contains(field)) {
                     throw new ProtocolException("BAD_MESSAGE");
                 }
-            });
+            }
             String type = optionalText(root, "type");
             if (type == null) {
                 throw new ProtocolException("BAD_MESSAGE");
@@ -65,7 +68,7 @@ public final class ProtocolCodec {
         }
     }
 
-    /** Includes exactly one LF. The caller writes this string once and flushes the writer. */
+    /** Đổi Message thành JSON và thêm đúng một ký tự xuống dòng để gửi qua socket. */
     public String encode(Message message) {
         Objects.requireNonNull(message, "message");
         try {

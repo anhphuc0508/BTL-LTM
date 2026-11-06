@@ -10,6 +10,10 @@ public final class ProtocolException extends IllegalArgumentException {
     }
 
     public String code() {
+        return getCode();
+    }
+
+    public String getCode() {
         return code;
     }
 }
