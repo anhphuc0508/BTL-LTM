@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-    <!-- Shared baseline for game events. Member 1 can extend this for transport events and Docker. -->
+    <!-- Log mạng và game cùng ghi console và file xoay vòng. -->
     <property name="LOG_DIR" value="${CHESS_LOG_DIR:-logs}"/>
     <property name="PATTERN" value="%date{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%thread] %logger{36} %msg%n%ex"/>
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">

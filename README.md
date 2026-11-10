@@ -5,7 +5,7 @@ Thư mục repository hiện tại là thư mục gốc dự án (`chess-online/
 
 Nhánh `feature/game-protocol` đã triển khai phần 3: protocol chuỗi thuần túy và nghiệp vụ trận đấu.
 Ví dụ gửi một dòng `MOVE|ABC234|e2e4`; không dùng JSON/Jackson.
-TCP Server chạy thật, giao diện Swing và Docker còn chờ phần 1 và 2 tích hợp.
+Nhánh `feature/network-server` bổ sung TCP Server thật và cấu hình Docker cho phần 1.
 File `.gitkeep` giữ thư mục test trong Git.
 
 Để đọc phần 3, bắt đầu với [hướng dẫn ngắn](docs/reading-guide.md), rồi mở
@@ -36,8 +36,17 @@ Chỉ build/test phần 3 và module dùng chung:
 .\mvnw.cmd -pl 'common,server' -am test
 ```
 
-`verify` tạo JAR thư viện cho từng module; hiện chưa có chương trình Server/Client có thể chạy độc lập.
+`verify` đóng gói Server kèm dependency thành `server/target/server-1.0-SNAPSHOT.jar`.
 Kết quả test ở `common/target/surefire-reports/` và `server/target/surefire-reports/`.
+
+Chạy Server sau khi build:
+
+```powershell
+java -jar server/target/server-1.0-SNAPSHOT.jar
+```
+
+Server mặc định lắng nghe `0.0.0.0:5000`. Hướng dẫn Docker, LAN, cấu hình
+và cách giải thích code phần 1 nằm trong [network-server.md](docs/network-server.md).
 
 ## Tài liệu bàn giao
 
