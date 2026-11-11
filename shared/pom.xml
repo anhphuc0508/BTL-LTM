@@ -8,7 +8,7 @@
         <artifactId>chess-online</artifactId>
         <version>1.0-SNAPSHOT</version>
     </parent>
-    <artifactId>common</artifactId>
+    <artifactId>shared</artifactId>
     <dependencies>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
