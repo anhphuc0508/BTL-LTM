@@ -32,19 +32,24 @@ public class GameFrame extends JFrame {
         JPanel content = new JPanel(new BorderLayout());
         content.setBackground(background);
 
-        JPanel header = new JPanel(new BorderLayout(12, 0));
+        JPanel header = new JPanel(new BorderLayout(0, 12));
         header.setOpaque(false);
-        header.setBorder(new EmptyBorder(14, 20, 4, 20));
+        header.setBorder(new EmptyBorder(14, 20, 14, 20));
 
         playerInfo.setForeground(Color.WHITE);
-        playerInfo.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 14));
+        playerInfo.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
         playerInfo.putClientProperty("html.disable", Boolean.TRUE);
 
-        status.setForeground(new Color(190, 215, 161));
+        status.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 22));
+        status.setForeground(Color.WHITE);
+        status.setBackground(new Color(65, 63, 58));
+        status.setOpaque(true);
+        status.setHorizontalAlignment(JLabel.CENTER);
+        status.setBorder(new EmptyBorder(14, 16, 14, 16));
         status.putClientProperty("html.disable", Boolean.TRUE);
 
-        header.add(playerInfo, BorderLayout.WEST);
-        header.add(status, BorderLayout.EAST);
+        header.add(playerInfo, BorderLayout.NORTH);
+        header.add(status, BorderLayout.CENTER);
 
         content.add(header, BorderLayout.NORTH);
         content.add(board, BorderLayout.CENTER);
@@ -57,6 +62,7 @@ public class GameFrame extends JFrame {
         buttons.setOpaque(false);
         buttons.setBorder(new EmptyBorder(0, 16, 16, 16));
 
+        resignButton.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 17));
         resignButton.addActionListener(e -> {
             int answer = JOptionPane.showConfirmDialog(
                     this,
@@ -71,6 +77,7 @@ public class GameFrame extends JFrame {
         });
 
         JButton disconnectButton = new JButton("Ngắt kết nối");
+        disconnectButton.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 17));
         disconnectButton.addActionListener(e -> askDisconnect(onDisconnect));
 
         buttons.add(resignButton);
@@ -80,7 +87,7 @@ public class GameFrame extends JFrame {
         content.add(side, BorderLayout.EAST);
 
         setContentPane(content);
-        setMinimumSize(new Dimension(860, 580));
+        setMinimumSize(new Dimension(960, 650));
 
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
@@ -128,5 +135,8 @@ public class GameFrame extends JFrame {
     public void setControls(boolean canMove, boolean canResign) {
         board.setInputEnabled(canMove);
         resignButton.setEnabled(canResign);
+        // Chỉ làm nổi bật khi Client đã sẵn sàng cho người chơi đi quân.
+        status.setBackground(canMove ? new Color(48, 112, 57) : new Color(65, 63, 58));
+        setTitle(canMove ? "ĐẾN LƯỢT BẠN — Chess Online" : "Chess Online");
     }
 }

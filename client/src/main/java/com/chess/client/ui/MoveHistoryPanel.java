@@ -42,15 +42,15 @@ public class MoveHistoryPanel extends JPanel {
         setLayout(new BorderLayout(0, 16));
         setBackground(BACKGROUND);
         setBorder(BorderFactory.createEmptyBorder(20, 16, 20, 16));
-        setPreferredSize(new Dimension(280, 600));
+        setPreferredSize(new Dimension(300, 600));
 
         JLabel title = new JLabel("LỊCH SỬ NƯỚC ĐI");
-        title.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 16));
+        title.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
         title.setForeground(TEXT);
         add(title, BorderLayout.NORTH);
 
-        table.setRowHeight(40);
-        table.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 16));
+        table.setRowHeight(44);
+        table.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 18));
         table.setForeground(TEXT);
         table.setBackground(BACKGROUND);
         table.setShowGrid(false);
@@ -78,7 +78,7 @@ public class MoveHistoryPanel extends JPanel {
 
                         setBackground(BACKGROUND);
                         setForeground(new Color(165, 163, 155));
-                        setFont(new Font(Font.SANS_SERIF, Font.BOLD, 13));
+                        setFont(new Font(Font.SANS_SERIF, Font.BOLD, 16));
                         setHorizontalAlignment(CENTER);
                         setBorder(BorderFactory.createEmptyBorder());
                         return this;
@@ -116,7 +116,7 @@ public class MoveHistoryPanel extends JPanel {
         add(scrollPane, BorderLayout.CENTER);
 
         summary.setForeground(new Color(165, 163, 155));
-        summary.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 13));
+        summary.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 15));
         add(summary, BorderLayout.SOUTH);
     }
 

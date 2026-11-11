@@ -344,7 +344,7 @@ public class ChessClient {
         } else if (opponentGone) game.setStatus("Đối thủ mất kết nối • Chờ kết quả");
         else if (pending != null) game.setStatus(pending.equals("GET_STATE")
                 ? "Đang đồng bộ lịch sử..." : "Đang chờ Server xác nhận...");
-        else game.setStatus((state.color.equals(state.turn) ? "Đến lượt bạn" : "Đang chờ đối thủ")
+        else game.setStatus((state.color.equals(state.turn) ? "ĐẾN LƯỢT BẠN — Hãy chọn quân để đi" : "LƯỢT ĐỐI THỦ — Vui lòng chờ")
                 + (state.inCheck ? " • Chiếu" : ""));
     }
 

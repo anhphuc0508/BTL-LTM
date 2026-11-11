@@ -1,0 +1,18 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - "${CHESS_PORT:-5000}:5000"
+    environment:
+      CHESS_HOST: 0.0.0.0
+      CHESS_PORT: 5000
+      CHESS_TIMEOUT_MS: ${CHESS_TIMEOUT_MS:-120000}
+      CHESS_MAX_CLIENTS: ${CHESS_MAX_CLIENTS:-64}
+    volumes:
+      - server-logs:/app/logs
+    stop_grace_period: 15s
+
+volumes:
+  server-logs:

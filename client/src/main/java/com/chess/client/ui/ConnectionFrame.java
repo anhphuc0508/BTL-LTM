@@ -44,7 +44,7 @@ public class ConnectionFrame extends JFrame {
         content.setBackground(background);
 
         JLabel title = new JLabel("CHESS ONLINE");
-        title.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 25));
+        title.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 28));
         title.setForeground(foreground);
         content.add(title, BorderLayout.NORTH);
 
@@ -57,13 +57,14 @@ public class ConnectionFrame extends JFrame {
 
         connectButton.setBackground(new Color(115, 149, 82));
         connectButton.setForeground(Color.WHITE);
-        connectButton.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 15));
+        connectButton.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
         connectButton.setFocusPainted(false);
 
         form.add(connectButton);
         content.add(form, BorderLayout.CENTER);
 
         status.setForeground(new Color(190, 188, 180));
+        status.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 16));
         content.add(status, BorderLayout.SOUTH);
 
         connectButton.addActionListener(e -> {
@@ -106,7 +107,7 @@ public class ConnectionFrame extends JFrame {
             }
         });
 
-        setSize(440, 420);
+        setSize(500, 500);
         setResizable(false);
         setLocationRelativeTo(null);
     }
@@ -116,8 +117,9 @@ public class ConnectionFrame extends JFrame {
 
         JLabel label = new JLabel(title);
         label.setForeground(new Color(220, 218, 210));
+        label.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 17));
 
-        field.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 15));
+        field.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 18));
 
         panel.add(label);
         panel.add(field);

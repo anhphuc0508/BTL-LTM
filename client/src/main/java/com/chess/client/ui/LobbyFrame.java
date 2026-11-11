@@ -41,7 +41,7 @@ public class LobbyFrame extends JFrame {
         title.setText("Người chơi: " + playerName);
         title.putClientProperty("html.disable", Boolean.TRUE);
         title.setForeground(Color.WHITE);
-        title.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
+        title.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 20));
 
         content.add(title, BorderLayout.NORTH);
 
@@ -68,9 +68,11 @@ public class LobbyFrame extends JFrame {
 
         JLabel hint = new JLabel("Mã phòng");
         hint.setForeground(Color.LIGHT_GRAY);
+        hint.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 17));
+        roomField.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 20));
 
         roomLabel.setForeground(new Color(174, 207, 141));
-        roomLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
+        roomLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 22));
         roomLabel.putClientProperty("html.disable", Boolean.TRUE);
 
         controls.add(createButton);
@@ -85,10 +87,12 @@ public class LobbyFrame extends JFrame {
         bottom.setOpaque(false);
 
         status.setForeground(Color.LIGHT_GRAY);
+        status.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 16));
         status.putClientProperty("html.disable", Boolean.TRUE);
         bottom.add(status, BorderLayout.NORTH);
 
         JButton disconnectButton = new JButton("Ngắt kết nối");
+        disconnectButton.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 17));
         disconnectButton.addActionListener(e -> onDisconnect.run());
         bottom.add(disconnectButton, BorderLayout.SOUTH);
 
@@ -104,12 +108,13 @@ public class LobbyFrame extends JFrame {
             }
         });
 
-        setSize(460, 440);
+        setSize(540, 540);
         setResizable(false);
         setLocationRelativeTo(null);
     }
 
     private void styleButton(JButton button) {
+        button.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
         button.setBackground(new Color(115, 149, 82));
         button.setForeground(Color.WHITE);
         button.setFocusPainted(false);

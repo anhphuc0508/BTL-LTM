@@ -3,9 +3,61 @@
 Bộ khung dự án theo mục 4 của tài liệu `Chess_Online_Phan_Cong_Moi_3_Nguoi_Logging.docx`.
 Thư mục repository hiện tại là thư mục gốc dự án (`chess-online/` trong tài liệu).
 
-Hiện tại chỉ có cấu trúc thư mục và file trống, chưa có code hoặc cấu hình chạy.
-Các file Java, `pom.xml`, Logback, Docker và tài liệu trong `docs/` đều để trống.
-Chưa thể build hoặc chạy ứng dụng. File `.gitkeep` giữ thư mục test trong Git.
+Nhánh `feature/game-protocol` đã triển khai phần 3: protocol chuỗi thuần túy và nghiệp vụ trận đấu.
+Ví dụ gửi một dòng `MOVE|ABC234|e2e4`; không dùng JSON/Jackson.
+Nhánh `feature/network-server` bổ sung TCP Server thật và cấu hình Docker cho phần 1.
+File `.gitkeep` giữ thư mục test trong Git.
+
+Để đọc phần 3, bắt đầu với [hướng dẫn ngắn](docs/reading-guide.md), rồi mở
+`GameService.handle()` và `handleMove()`. Code chính dùng class, getter, if/else và chú thích tiếng Việt.
+
+## Build và kiểm thử
+
+Cần **JDK 17 trở lên** và Internet ở lần chạy đầu để tải Maven/dependency từ Maven Central và JitPack.
+Maven Wrapper đi kèm, không cần cài Maven riêng. Có thể đặt `JAVA_HOME` trỏ đến JDK.
+
+Windows PowerShell:
+
+```powershell
+.\mvnw.cmd test
+.\mvnw.cmd verify
+```
+
+Linux/macOS:
+
+```sh
+./mvnw test
+./mvnw verify
+```
+
+Chỉ build/test phần 3 và module dùng chung:
+
+```powershell
+.\mvnw.cmd -pl 'common,server' -am test
+```
+
+`verify` đóng gói Server kèm dependency thành `server/target/server-1.0-SNAPSHOT.jar`.
+Kết quả test ở `common/target/surefire-reports/` và `server/target/surefire-reports/`.
+
+Chạy Server sau khi build:
+
+```powershell
+java -jar server/target/server-1.0-SNAPSHOT.jar
+```
+
+Server mặc định lắng nghe `0.0.0.0:5000`. Hướng dẫn Docker, LAN, cấu hình
+và cách giải thích code phần 1 nằm trong [network-server.md](docs/network-server.md).
+
+## Tài liệu bàn giao
+
+- [Bảng lệnh chuỗi và ví dụ gửi/nhận](docs/protocol.md).
+- [Kiến trúc và hướng dẫn ghép code](docs/architecture.md).
+- [Logging](docs/logging.md).
+- [Kế hoạch và bằng chứng kiểm thử](docs/test-plan.md).
+- [Báo cáo phần 3](docs/member-3-report.md).
+- [Thư viện và giấy phép](docs/third-party.md).
+
+Thay đổi protocol/API cần được cả nhóm review trước khi merge vào `main`.
 
 ## Nhánh và phân công
 
@@ -18,7 +70,7 @@ Chưa thể build hoặc chạy ứng dụng. File `.gitkeep` giữ thư mục t
 
 Cả ba nhánh thành viên bắt đầu từ cùng bộ khung trên `main`.
 
-## Cấu trúc
+## Cấu trúc ban đầu
 
 ```text
 .
